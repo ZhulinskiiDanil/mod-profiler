@@ -5,7 +5,7 @@
 	},
 	"id": "zhulis.mod-profiler",
 	"name": "Mod Profiler",
-	"version": "v0.2.0",
+	"version": "v0.3.0",
 	"developer": "Zhulis",
 	"description": "A sampling profiler that shows how much of each frame every installed mod takes",
 	"repository": "https://github.com/ZhulinskiiDanil/mod-profiler",
