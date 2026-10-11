@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cwctype>
 #include <string_view>
+#include <unordered_map>
 
 namespace
 {
@@ -69,7 +70,24 @@ namespace
     return index;
   }
 
-  uint32_t bucketFor(std::wstring const& path, std::vector<modules::ModBinary> const& mods, Buckets& buckets)
+  // The mods by their binary's lowered path and by ID, made once for a build
+  struct ModIndex
+  {
+    std::unordered_map<std::wstring, modules::ModBinary const*> byPath;
+    std::unordered_map<std::string, modules::ModBinary const*> byID;
+
+    explicit ModIndex(std::vector<modules::ModBinary> const& mods)
+    {
+      for (auto const& mod : mods)
+      {
+        if (!mod.path.empty())
+          byPath[lower(mod.path.wstring())] = &mod;
+        byID[mod.id] = &mod;
+      }
+    }
+  };
+
+  uint32_t bucketFor(std::wstring const& path, ModIndex const& mods, Buckets& buckets)
   {
     auto lowered = lower(path);
     auto file = lowered.substr(lowered.find_last_of(L"\\/") + 1);
@@ -80,16 +98,14 @@ namespace
     if (file == L"geode.dll")
       return buckets.index("geode.loader", "Geode");
 
-    for (auto const& mod : mods)
-      if (!mod.path.empty() && lower(mod.path.wstring()) == lowered)
-        return named(buckets, mod.id, mod.name);
+    if (auto mod = mods.byPath.find(lowered); mod != mods.byPath.end())
+      return named(buckets, mod->second->id, mod->second->name);
 
     auto id = modFromPath(lowered);
     if (!id.empty())
     {
-      for (auto const& mod : mods)
-        if (mod.id == id)
-          return named(buckets, mod.id, mod.name);
+      if (auto mod = mods.byID.find(id); mod != mods.byID.end())
+        return named(buckets, mod->second->id, mod->second->name);
       return buckets.index(id, id);
     }
     return bucket::OTHER;
@@ -145,6 +161,7 @@ std::unique_ptr<ModuleMap> modules::build(std::vector<void*> const& handles, std
 {
   std::vector<MappedModule> mapped;
   std::vector<CodeRange> code;
+  ModIndex index(mods);
 
   for (auto handle : handles)
   {
@@ -178,7 +195,7 @@ std::unique_ptr<ModuleMap> modules::build(std::vector<void*> const& handles, std
     MappedModule module{
         .base = base,
         .size = info.SizeOfImage,
-        .bucket = bucketFor(path, mods, buckets),
+        .bucket = bucketFor(path, index, buckets),
         .name = narrow(path.substr(path.find_last_of(L"\\/") + 1)),
         .handle = pinned,
     };

@@ -423,9 +423,9 @@ namespace
     analyzer.attribution = std::move(attribution);
   }
 
-  // A map pins its modules. Made again this often anyway, so a module some mod unloaded, which only
-  // the pin kept, goes away
-  constexpr auto MAP_LIFETIME = std::chrono::seconds(5);
+  // A map pins its modules. This often the pins are all let go before the next map, so a module some
+  // mod unloaded, which only the pins kept, goes away
+  constexpr auto UNPIN_EVERY = std::chrono::seconds(30);
 
   // Until the sampler has started two samples since: it can't be reading a map it saw before anymore
   void waitForSampler()
@@ -470,22 +470,31 @@ namespace
     }
     analyzer.learned.insert(analyzer.learned.end(), learned.begin(), learned.end());
     auto now = std::chrono::steady_clock::now();
-    if (analyzer.map && handles == analyzer.handles && version == analyzer.modsVersion && learned.empty() &&
-        now - analyzer.mapTime < MAP_LIFETIME)
+    bool unpin = analyzer.map && now - analyzer.mapTime >= UNPIN_EVERY;
+    if (analyzer.map && !unpin && handles == analyzer.handles && version == analyzer.modsVersion && learned.empty())
       return;
 
-    if (analyzer.map)
+    if (unpin)
     {
+      // The sampler pauses until the new map: without the pins, a module may be gone
       dropMap(analyzer);
-      // Without the pins, a module may be gone
       handles = modules::loaded();
+      analyzer.mapTime = now;
     }
+    else if (!analyzer.map)
+      analyzer.mapTime = now;
+
+    // The new map in, then the old one out once the sampler can't be reading it: no pause
     auto map = modules::build(handles, mods, analyzer.learned, analyzer.buckets);
     s_map.store(map.get(), std::memory_order_seq_cst);
+    if (analyzer.map)
+    {
+      waitForSampler();
+      modules::release(*analyzer.map);
+    }
     analyzer.map = std::move(map);
     analyzer.handles = std::move(handles);
     analyzer.modsVersion = version;
-    analyzer.mapTime = now;
   }
 
   // Addresses outside every module, to look up on the main thread once
