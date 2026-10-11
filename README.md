@@ -8,6 +8,10 @@ A [Geode](https://geode-sdk.org) mod for Geometry Dash that shows how much of ev
 
 ![The table in a level: Icon Mayhem's own time by function, from its PDB](docs/level.png)
 
+## Install
+
+Download `zhulis.mod-profiler.geode` from the newest of the [releases](https://github.com/ZhulinskiiDanil/mod-profiler/releases) and put it into Geode's mods folder (or **Install from file** on Geode's mods page). Or, with [Zhulis Mods Manager](https://github.com/ZhulinskiiDanil/zhulis-mods-manager), turn on its **Include pre-releases** setting: the profiler is a beta, its releases are pre-releases. Improved Logger is optional.
+
 ## Use
 
 - `Ctrl+Shift+P` shows the table. Click a mod to see which of its hooks and functions its time goes to

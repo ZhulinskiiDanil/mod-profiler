@@ -8,6 +8,10 @@
 
 ![Таблица в уровне: собственное время Icon Mayhem по функциям, из его PDB](docs/level.png)
 
+## Установка
+
+Скачайте `zhulis.mod-profiler.geode` из самого нового [релиза](https://github.com/ZhulinskiiDanil/mod-profiler/releases) и положите в папку модов Geode (или **Install from file** на странице модов Geode). Или в [Zhulis Mods Manager](https://github.com/ZhulinskiiDanil/zhulis-mods-manager) включите настройку **Include pre-releases**: профайлер — бета, его релизы — пре-релизы. Improved Logger не обязателен.
+
 ## Как пользоваться
 
 - `Ctrl+Shift+P` показывает таблицу. Клик по моду показывает, в каких его хуках и функциях уходит время

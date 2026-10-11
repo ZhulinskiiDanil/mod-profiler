@@ -5,7 +5,7 @@ Start: **Sun Oct 11 03:33:17 2026** (the first `date` of the run).
 ## Links
 
 - Repository: https://github.com/ZhulinskiiDanil/mod-profiler
-- Latest release: https://github.com/ZhulinskiiDanil/mod-profiler/releases/latest (all releases: v0.1.0 to v0.8.0, pre-releases)
+- Releases: https://github.com/ZhulinskiiDanil/mod-profiler/releases (pre-releases, so GitHub's "latest" link skips them)
 - Zhulis Mods Manager: the entry in `mods.json`, https://github.com/ZhulinskiiDanil/zhulis-mods-manager/blob/main/mods.json
   (commit c72bc67), and in its built-in list (commit 8711519). The manager shows pre-releases with
   *Include pre-releases* on: its beta channel. Its cache had fetched the profiler's releases at 04:22.
