@@ -28,6 +28,20 @@ jobs:
           cmake --build build-tests
           ctest --test-dir build-tests --output-on-failure
 
+  # The same on Windows with MSVC, and the sampler itself: a thread suspended and its stack walked
+  tests-windows:
+    name: Tests on Windows
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run the tests
+        run: |
+          cmake -S tests -B build-tests
+          cmake --build build-tests --config Release
+          ctest --test-dir build-tests -C Release --output-on-failure --timeout 120
+
   build:
     name: Windows
     runs-on: windows-latest

@@ -36,3 +36,11 @@ add_test(NAME speedscope COMMAND speedscope-tests)
 
 add_executable(compare-tests CompareTests.cpp ../src/Compare.cpp ../src/Profile.cpp ../src/ModuleMap.cpp ../src/Attribution.cpp ../src/Unwind.cpp)
 add_test(NAME compare COMMAND compare-tests)
+
+# The sampler itself on Windows: a thread in a known chain of functions, suspended and walked
+if (WIN32)
+    add_executable(sampler-tests SamplerTests.cpp ../src/Sampler.cpp ../src/Modules.cpp ../src/ModuleMap.cpp
+        ../src/Unwind.cpp ../src/Code.cpp ../src/Profile.cpp ../src/Attribution.cpp)
+    target_link_libraries(sampler-tests psapi)
+    add_test(NAME sampler COMMAND sampler-tests)
+endif()
