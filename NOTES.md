@@ -133,6 +133,13 @@ Start: **Sun Oct 11 03:33:17 2026** (the first `date` of the run).
 - 07:00 how exact the numbers are, with a known cost (`MOD_PROFILER_SELFTEST=cost`, 0.500 ms of every frame
   in the profiler's own code): measured 0.514 ms a frame on average over 30 s.
 
+- 07:05 **zones** (own idea, for mod developers): `mod_profiler::Zone zone("hair simulation")` in a mod's
+  code counts the samples taken in it for that zone, shown under the mod in ms a frame. A soft dependency
+  like Improved Logger's API, but without an event per call: the header asks for a table of two function
+  pointers once. The sampler reads the main thread's zone stack while it's suspended (the profiler's own
+  memory, written id first, depth second). The cost self test runs in a zone: 0.50 ms in the table.
+- 07:06 a second review by a separate reviewer agent, of everything since v0.3.0.
+
 ## Numbers
 
 | Check | Samples/s | Suspended avg | Max | Scanned/s | Result |
