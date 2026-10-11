@@ -1,6 +1,8 @@
 # NOTES: Mod Profiler, the autonomous run
 
-Start: **Sun Oct 11 03:33:17 2026** (the first `date` of the run).
+Start: **Sun Oct 11 03:33:17 2026** (the first `date` of the run). End: **Sun Oct 11 11:35:49 2026**, 8 h 02 min.
+The last checks, after 8 hours: `geode build` packaged and installed, 11 of 11 test suites passed, the last game
+run (111 s in the main menu, v0.8.1) had 111 diagnostics lines, no gap, 27.2 us a sample, no error, no crash.
 
 ## Links
 
