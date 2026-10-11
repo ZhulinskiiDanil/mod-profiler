@@ -138,7 +138,13 @@ Start: **Sun Oct 11 03:33:17 2026** (the first `date` of the run).
   like Improved Logger's API, but without an event per call: the header asks for a table of two function
   pointers once. The sampler reads the main thread's zone stack while it's suspended (the profiler's own
   memory, written id first, depth second). The cost self test runs in a zone: 0.50 ms in the table.
-- 07:06 a second review by a separate reviewer agent, of everything since v0.3.0.
+- 07:06 a second review by a separate reviewer agent, of everything since v0.3.0. Nothing critical again (the
+  suspended window clean). Fixed all nine findings: pins let go after a timed-out wait (now kept on a retired
+  list), epilogs whose RSP reads weren't checked (a decoder of what RtlVirtualUnwind takes for an epilog),
+  hooks made after the game loaded (now looked at every 600 frames), the zone API cached as missing forever
+  if a mod asked before the profiler loaded, the zone name cache keyed by pointer only, the start counted
+  wrong with sampling turned on late, Geode's bucket possibly missing, the old snapshot freed under the
+  lock, the start's memory estimate. Checked again after: sampler test, a level, the cost test (0.512 ms).
 
 ## Numbers
 

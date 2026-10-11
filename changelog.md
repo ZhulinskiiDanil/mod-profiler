@@ -1,3 +1,9 @@
+# v0.6.0
+
+- Zones: `mod_profiler::Zone zone("hair simulation")` (include/ModProfiler.hpp) in a mod's code, and the table shows the zone's ms a frame under the mod. A soft dependency, a pointer check when Mod Profiler isn't there
+- Fixes from a second code review: a module isn't unloaded while the sampler may still read its tables even when the wait for it times out, every epilog's reads are checked, hooks made after the game loaded count, the game's start is right with sampling turned on late
+- Geode is always its own row, the game's start keeps at most 16 MB of stacks
+
 # v0.5.0
 
 - Hangs: a frame going on for 2 seconds is in the log before it ends, with the mod, its function and the stack the game is stuck in. Deadlocks too: a frame waiting on a lock or another thread, with the mod it waits in a call of. A minimized game, a dialog or the game closing aren't hangs
