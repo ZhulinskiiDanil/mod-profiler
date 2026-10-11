@@ -218,6 +218,7 @@ Stage 1 and the whole backlog, then more of my own:
   final one, `.geode` attached by CI.
 - 10:41 a last 40 minute soak on v0.8.1 in a level: 2466 lines, no gap, no crash, memory flat after the
   PDBs of the start's names were let go.
+
 ## Numbers
 
 | Check | Samples/s | Suspended avg | Max | Scanned/s | Result |
@@ -273,7 +274,8 @@ Stage 1 and the whole backlog, then more of my own:
   enough) would let the profiler go to the Index.
 - **Learn hook handlers earlier.** Hook creation could be watched (Geode's hook events) so handlers made
   during loading are learned before the start's samples are counted.
-- **Zones in the exported profile.** A zone could be a frame of its own in the speedscope file.
+- **Zones with their own time.** A zone shows all its time now; its own time (what isn't in a deeper zone
+  or another mod) would be the next step, and zones on Geode's worker threads.
 - **Other threads.** Geode's async runtime and mods' worker threads could be sampled the same way, with their
   own table, for mods that stall the main thread by waiting on them.
 - **A frame-time graph** in the table, with the slow frames marked, and clicking one to see its stacks.
