@@ -71,6 +71,28 @@ Start: **Sun Oct 11 03:33:17 2026** (the first `date` of the run).
   `RtlUserThreadStart`, the self test's 120 ms in it. Speedscope, not Chrome Trace: speedscope opens Chrome's
   format too, and its sampled format is exactly what a sampler has.
 
+- 05:05 Improved Logger link (backlog 6), checked with real keys: its marker key logged "Since the last marker:
+  47.0 s, 222 fps, ... own: ImagePlus 0.22 ms". 05:20 the baseline (backlog 7), checked with real clicks on
+  [set baseline] and [reset]: `baseline.json` written, the table's base column, the comparison at a marker.
+- 05:20 README.ru.md, about.md for the index (backlog 9).
+- 05:30 code review (backlog 10) by a separate reviewer agent, no file edits by it. Nothing critical: every path
+  in the suspended window resumes the thread, nothing in it allocates or locks, all reads are bounded. Fixed:
+  pins held for the whole session (a DLL a mod unloaded never went away: now released every 5 s), seq_cst
+  for the map/iteration handshake, fake slow frames after lost frame ends, slow frames without samples,
+  failed samples counted as the game's, the snapshot deep-copied on the main thread, DbgHelp work while the
+  table is hidden. Left as they are, with the reasons:
+  - a fault inside the walk would go through vectored exception handlers, one of which could lock. The checks
+    before `RtlVirtualUnwind` make a fault very unlikely; copying the stack and unwinding the copy would remove
+    it but needs an unwinder of its own (RtlVirtualUnwind reads the real stack through the frame register)
+  - in the last bytes of an `rbp` epilog the frame check fails and the sample keeps only its first frame
+  - DbgHelp is process-wide: if the game crashes while the analyzer loads a PDB, Geode's crash report may lack
+    symbols. Names are now only made for the table when it's shown, for slow frames and for exports
+- 05:28 gameplay checks: the mouse can't press the game's own buttons (the table's buttons work), so
+  `MOD_PROFILER_SELFTEST=play` opens Stereo Madness through the game's API. Opening it is a 130-150 ms slow
+  frame, about half of it in Geode's hook dispatch (`tulip::hook::Thiscall64Convention`'s shared_ptr released
+  under the hooks of `CCSprite::create` and `CCSpriteBatchNode::initWithTexture`): worth telling Geode about.
+- 05:40 v0.3.0 released (pre-release) after a 100 s check in a level.
+
 ## Numbers
 
 | Check | Samples/s | Suspended avg | Max | Scanned/s | Result |
@@ -82,3 +104,5 @@ Start: **Sun Oct 11 03:33:17 2026** (the first `date` of the run).
 | interval 2 ms, 80 s | 500 | 28.4 us | 649 us single | 8 | stopped 14.2 ms/s, sampler 0.9%, analyzer 0.2% |
 | interval 5 ms, 80 s | 200 | 33.9 us | 335 us single | 3 | stopped 6.8 ms/s, analyzer 0.2% |
 | self test, 100 s | 1000 | 26-27 us | - | - | slow frame of 121 ms found, 98-99% blamed on the profiler's test function |
+| v0.3.0, 100 s in a level | 994 | 29.6 us | 733 us single | 18 | stopped 29.4 ms/s, sampler 2.0%, analyzer 0.7%, no gap, no crash |
+| sampling off, 80 s in a level | 0 | - | - | - | no diagnostics, no slow frames, table says "No samples yet" |

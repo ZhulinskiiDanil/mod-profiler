@@ -47,6 +47,9 @@ struct Attribution
   // (CCDirector::mainLoop, CCEGLView::pollEvents). `finish` adds the detours of their hooks
   std::vector<uintptr_t> loop;
   std::vector<uintptr_t> frame;
+  // Geode's own bucket: its functions that aren't detours stand between a mod's detour and the
+  // original when the mod calls the original through it, and are the hooks' cost, not Geode's
+  int loader = -1;
 
   void finish();
   bool isWait(uintptr_t address) const;

@@ -238,6 +238,26 @@ static void testHookPlumbing()
   CHECK(verdict(process, stack({process.MA(0x150), process.H(0x10), process.G(0x250)})).owner == static_cast<int>(process.A));
 }
 
+static void testThroughGeodesHelper()
+{
+  // B is Geode here. A's detour calls the original through one of Geode's functions (not a detour)
+  // and a hook handler: A passes on, Geode's function is in between, the game's work is nobody's
+  Process process;
+  auto attribution = process.attribution();
+  attribution.loader = static_cast<int>(process.B);
+  auto map = process.map();
+  auto passing = attribute(stack({process.G(0x150), process.H(0x10), process.MB(0x250), process.MA(0x150), process.H(0x10),
+                                  process.G(0x350)}),
+                           map, attribution);
+  CHECK(passing.owner == -1);
+  // A's own function calling Geode's (an API, its own work): Geode's work for it counts as Geode's
+  auto api = attribute(stack({process.C(0x150), process.MB(0x250), process.MA(0x250), process.C(0x350)}), map, attribution);
+  CHECK(api.owner == static_cast<int>(process.B));
+  // Geode's detour is Geode's own as before
+  auto detour = attribute(stack({process.C(0x150), process.MB(0x150), process.H(0x10), process.G(0x350)}), map, attribution);
+  CHECK(detour.owner == static_cast<int>(process.B));
+}
+
 static void testEmpty()
 {
   Process process;
@@ -261,6 +281,7 @@ int main()
   testPatchedCall();
   testIdle();
   testHookPlumbing();
+  testThroughGeodesHelper();
   testBetweenFrames();
   testDetoursCountAsTheFunction();
   testEmpty();

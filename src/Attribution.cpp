@@ -93,11 +93,23 @@ namespace
     return start && !attribution.hooks.targetOf(start);
   }
 
+  // A frame between a call and where it goes: a hook handler, or Geode's code that isn't a detour
+  bool isBetween(Sample const& sample, ModuleMap const& map, Attribution const& attribution, int frame)
+  {
+    auto bucket = map.bucketOf(sample.frames[frame]);
+    if (bucket == bucket::HOOKS)
+      return true;
+    if (attribution.loader < 0 || bucket != static_cast<uint32_t>(attribution.loader))
+      return false;
+    auto start = map.functionStart(lookupAddress(sample, frame));
+    return start && !attribution.hooks.targetOf(start);
+  }
+
   bool passesOn(Sample const& sample, ModuleMap const& map, Attribution const& attribution, int frame, uint32_t owner)
   {
-    // What the frame calls, past the hook handlers in between
+    // What the frame calls, past the hook handlers (and Geode's helpers) in between
     int callee = frame - 1;
-    while (callee >= 0 && map.bucketOf(sample.frames[callee]) == bucket::HOOKS)
+    while (callee >= 0 && isBetween(sample, map, attribution, callee))
       callee--;
     if (callee < 0)
       return false;
@@ -153,6 +165,19 @@ Verdict attribute(Sample const& sample, ModuleMap const& map, Attribution const&
       continue;
     if (isHookPlumbing(sample, map, attribution, i))
       break;
+    // Geode's helper that a mod's detour calls the original through: the mod passes on, so does it
+    if (attribution.loader >= 0 && owner == static_cast<uint32_t>(attribution.loader) && isBetween(sample, map, attribution, i))
+    {
+      int caller = i + 1;
+      while (caller < sample.depth && caller < MAX_FRAMES && map.bucketOf(sample.frames[caller]) == bucket::HOOKS)
+        caller++;
+      if (caller < sample.depth && caller < MAX_FRAMES)
+      {
+        auto callerOwner = map.bucketOf(sample.frames[caller]);
+        if (callerOwner >= bucket::FIRST_MOD && callerOwner != owner && passesOn(sample, map, attribution, caller, callerOwner))
+          continue;
+      }
+    }
     verdict.owner = static_cast<int>(owner);
     auto start = map.functionStart(lookupAddress(sample, i));
     verdict.function = start ? start : sample.frames[i];

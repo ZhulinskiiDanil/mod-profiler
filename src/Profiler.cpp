@@ -315,6 +315,7 @@ namespace
         analyzer.hookNames[hook.target] = hook.name;
     }
     attribution.waits = modules::waitFunctions();
+    attribution.loader = analyzer.buckets.find("geode.loader");
     attribution.finish();
     analyzer.attribution = std::move(attribution);
   }

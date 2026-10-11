@@ -185,6 +185,39 @@ static void testFunctionBegin()
   CHECK(unwind::functionBegin(image.bytes.data(), image.bytes.size(), 0x700, 0xFFFF) == 0x700);
 }
 
+// ! --- Generated code's frame pointer --- !
+
+static void testFramePointerProlog()
+{
+  // TulipHook's: push rbp, then sub rsp 0xc0 (listed last first), prolog 8 bytes
+  Image image;
+  image.info(0x100, 1, 0, 8, 0, 0, {code(8, 1, 0), 0xc0 / 8, code(1, 0, RBP)});
+  CHECK(unwind::framePointerProlog(image.bytes.data(), image.bytes.size(), 0x100) == 8);
+  // Starts with push rbx: no
+  image.info(0x200, 1, 0, 2, 0, 0, {code(2, 0, RBP), code(1, 0, RBX)});
+  CHECK(unwind::framePointerProlog(image.bytes.data(), image.bytes.size(), 0x200) == -1);
+  // No codes, broken
+  image.info(0x300, 1, 0, 0, 0, 0, {});
+  CHECK(unwind::framePointerProlog(image.bytes.data(), image.bytes.size(), 0x300) == -1);
+  CHECK(unwind::framePointerProlog(image.bytes.data(), image.bytes.size(), 0xFFFF) == -1);
+}
+
+static void testFramePointerEpilog()
+{
+  uint8_t ret[] = {0xC3};
+  uint8_t pop[] = {0x5D, 0xC3};
+  uint8_t add[] = {0x48, 0x81, 0xC4, 0xC0, 0x00, 0x00, 0x00};
+  uint8_t addSmall[] = {0x48, 0x83, 0xC4, 0x28};
+  uint8_t call[] = {0xFF, 0xD0};
+  CHECK(unwind::isFramePointerEpilog(ret, 1));
+  CHECK(unwind::isFramePointerEpilog(pop, 2));
+  CHECK(unwind::isFramePointerEpilog(add, 7));
+  CHECK(unwind::isFramePointerEpilog(addSmall, 4));
+  CHECK(!unwind::isFramePointerEpilog(call, 2));
+  CHECK(!unwind::isFramePointerEpilog(add, 2));
+  CHECK(!unwind::isFramePointerEpilog(ret, 0));
+}
+
 // ! --- Broken info --- !
 
 static void testBroken()
@@ -224,6 +257,8 @@ int main()
   testChained();
   testChainedFramePointer();
   testFunctionBegin();
+  testFramePointerProlog();
+  testFramePointerEpilog();
   testBroken();
   return finish("unwind");
 }

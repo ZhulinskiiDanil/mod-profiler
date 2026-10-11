@@ -29,4 +29,13 @@ namespace unwind
   // Where the function an entry belongs to starts. A compiler can split a function into parts with
   // their own entries, chained to the first one: `begin` and `unwindRva` are the part's
   uint32_t functionBegin(uint8_t const* image, size_t imageSize, uint32_t begin, uint32_t unwindRva) noexcept;
+
+  // How long the prolog of a function is that starts with `push rbp`, or -1 when it doesn't. The code
+  // TulipHook generates goes on with `mov rbp, rsp` and may move RSP further than its unwind info says
+  // (a calling convention's stack arguments): past the prolog, RBP is the exact frame
+  int framePointerProlog(uint8_t const* image, size_t imageSize, uint32_t unwindRva) noexcept;
+
+  // Whether the code at `pc` is the end of such a function: `add rsp, imm`, `pop rbp` or `ret`, where
+  // RBP isn't the frame anymore (or soon won't be)
+  bool isFramePointerEpilog(uint8_t const* pc, size_t available) noexcept;
 } // namespace unwind

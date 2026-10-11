@@ -59,6 +59,34 @@ uint32_t unwind::functionBegin(uint8_t const* image, size_t imageSize, uint32_t 
   return begin;
 }
 
+int unwind::framePointerProlog(uint8_t const* image, size_t imageSize, uint32_t unwindRva) noexcept
+{
+  if (static_cast<uint64_t>(unwindRva) + 4 > imageSize)
+    return -1;
+  auto info = image + unwindRva;
+  auto version = info[0] & 7;
+  auto count = info[2];
+  if ((version != 1 && version != 2) || count == 0 || static_cast<uint64_t>(unwindRva) + 4 + count * 2 > imageSize)
+    return -1;
+  // The codes are listed last first: the prolog's first instruction is the last code
+  auto first = info + 4 + (count - 1) * 2;
+  constexpr uint8_t RBP = 5;
+  if ((first[1] & 0xF) != PUSH_NONVOL || (first[1] >> 4) != RBP)
+    return -1;
+  return info[1];
+}
+
+bool unwind::isFramePointerEpilog(uint8_t const* pc, size_t available) noexcept
+{
+  if (available == 0)
+    return false;
+  // ret, pop rbp
+  if (pc[0] == 0xC3 || pc[0] == 0x5D)
+    return true;
+  // add rsp, imm32 / imm8
+  return available >= 3 && pc[0] == 0x48 && (pc[1] == 0x81 || pc[1] == 0x83) && pc[2] == 0xC4;
+}
+
 unwind::Extent unwind::frameExtent(uint8_t const* image, size_t imageSize, uint32_t unwindRva, uint32_t offset) noexcept
 {
   Extent extent;

@@ -98,7 +98,28 @@ namespace
       function = reinterpret_cast<uint32_t const*>(module.base + target);
     }
 
-    auto extent = unwind::frameExtent(reinterpret_cast<uint8_t const*>(module.base), module.size, function[2], rva - begin);
+    auto image = reinterpret_cast<uint8_t const*>(module.base);
+
+    // Generated hook code: past its prolog and before its epilog, RBP is the exact frame. Its unwind info
+    // leaves out what a calling convention adds to the stack, and the frame above would be read wrong
+    if (module.bucket == bucket::HOOKS)
+    {
+      auto prolog = unwind::framePointerProlog(image, module.size, function[2]);
+      auto offset = rva - begin;
+      auto pc = reinterpret_cast<uint8_t const*>(context.Rip);
+      auto available = std::min<uintptr_t>(8, module.base + module.size - context.Rip);
+      if (prolog >= 0 && offset >= static_cast<uint32_t>(prolog) && !unwind::isFramePointerEpilog(pc, available) &&
+          bounds.holds(context.Rbp, 16) && context.Rbp >= sp)
+      {
+        auto frame = reinterpret_cast<uintptr_t const*>(context.Rbp);
+        context.Rip = frame[1];
+        context.Rsp = context.Rbp + 16;
+        context.Rbp = frame[0];
+        return true;
+      }
+    }
+
+    auto extent = unwind::frameExtent(image, module.size, function[2], rva - begin);
     if (!extent.ok || !bounds.holds(sp, 8))
       return false;
     auto frame = sp;
