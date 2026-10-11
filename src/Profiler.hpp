@@ -2,6 +2,7 @@
 
 // The profiler as the rest of the mod sees it: started once, fed the mods list and the frames,
 // and asked for the latest numbers. The analysis runs on its own thread once a second
+#include "Compare.hpp"
 #include "Modules.hpp"
 #include "Profile.hpp"
 
@@ -47,6 +48,10 @@ namespace profiler
   // A summary of the time since the last call (or the start) goes to the log at the analyzer's next
   // second: a profile between two markers
   void markSpan(std::string label);
+  // The session starts again at the analyzer's next second: its numbers, the slow frames
+  void resetSession();
+  // Marker summaries say what changed since it
+  void setBaseline(Baseline baseline);
 
   // Saves the last seconds of samples for speedscope.app, on the analyzer thread at its next
   // second. `done` gets the file, or an error, on the main thread

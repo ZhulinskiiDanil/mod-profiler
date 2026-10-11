@@ -33,3 +33,6 @@ add_test(NAME spikes COMMAND spikes-tests)
 
 add_executable(speedscope-tests SpeedscopeTests.cpp ../src/Speedscope.cpp)
 add_test(NAME speedscope COMMAND speedscope-tests)
+
+add_executable(compare-tests CompareTests.cpp ../src/Compare.cpp ../src/Profile.cpp ../src/ModuleMap.cpp ../src/Attribution.cpp ../src/Unwind.cpp)
+add_test(NAME compare COMMAND compare-tests)

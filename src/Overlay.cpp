@@ -1,5 +1,6 @@
 #include "Overlay.hpp"
 
+#include "BaselineFile.hpp"
 #include "Profiler.hpp"
 
 #include <Geode/Geode.hpp>
@@ -12,14 +13,23 @@ namespace
   constexpr int ROWS = 10;
   constexpr int DETAIL_LINES = 9;
   constexpr int SLOW_LINES = 4;
-  constexpr float WIDTH = 205;
+  constexpr float WIDTH = 230;
   constexpr float LINE = 6.5f;
   constexpr float MARGIN = 4;
   constexpr float FONT_SCALE = 0.3f;
   // Right edges of the number columns
-  constexpr float OWN_MS_X = 135;
-  constexpr float OWN_X = 167;
+  constexpr float OWN_MS_X = 128;
+  constexpr float BASE_X = 158;
+  constexpr float OWN_X = 190;
   constexpr float INCLUSIVE_X = WIDTH - MARGIN;
+  // A session shorter than this is too short to compare with
+  constexpr double MIN_BASELINE_SECONDS = 5;
+
+  ccColor3B const GREY = {150, 150, 160};
+  ccColor3B const GOLD = {255, 210, 90};
+  ccColor3B const GREEN = {120, 220, 120};
+  ccColor3B const RED = {255, 140, 120};
+  ccColor3B const BUTTON = {140, 200, 255};
 
   std::string fit(std::string text, size_t length)
   {
@@ -58,35 +68,47 @@ namespace
     {
       if (!CCNode::init())
         return false;
-      auto height = MARGIN * 2 + LINE * (3 + ROWS + 1 + DETAIL_LINES + 1 + SLOW_LINES);
+      auto height = MARGIN * 2 + LINE * (5 + ROWS + 1 + DETAIL_LINES + 1 + SLOW_LINES);
       setContentSize({WIDTH, height});
       setAnchorPoint({0, 1});
       setID("mod-profiler-overlay"_spr);
 
-      auto background = CCLayerColor::create({0, 0, 0, 175}, WIDTH, height);
-      addChild(background);
-
-      float y = height - MARGIN;
-      m_title = label(this, MARGIN, y, {0, 1}, {255, 210, 90});
-      y -= LINE;
-      m_summary = label(this, MARGIN, y, {0, 1}, {190, 190, 200});
-      y -= LINE;
-      label(this, MARGIN, y, {0, 1}, {150, 150, 160})->setString("Mod");
-      label(this, OWN_MS_X, y, {1, 1}, {150, 150, 160})->setString("own ms");
-      label(this, OWN_X, y, {1, 1}, {150, 150, 160})->setString("own %");
-      label(this, INCLUSIVE_X, y, {1, 1}, {150, 150, 160})->setString("incl %");
-      y -= LINE;
-
+      addChild(CCLayerColor::create({0, 0, 0, 175}, WIDTH, height));
       m_menu = CCMenu::create();
       m_menu->setPosition({0, 0});
       m_menu->setContentSize(getContentSize());
       addChild(m_menu);
 
+      float y = height - MARGIN;
+      m_title = label(this, MARGIN, y, {0, 1}, GOLD);
+      y -= LINE;
+      m_summary = label(this, MARGIN, y, {0, 1}, {190, 190, 200});
+      y -= LINE;
+      m_compare = label(this, MARGIN, y, {0, 1}, {190, 190, 200});
+      y -= LINE;
+
+      // The buttons: what the table shows, starting the session again, the baseline, saving a profile
+      float x = MARGIN;
+      m_viewButton = button(x, y, "[last 5 s]", menu_selector(Overlay::onView));
+      button(x, y, "[reset]", menu_selector(Overlay::onReset));
+      m_baselineButton = button(x, y, "[new baseline]", menu_selector(Overlay::onBaseline));
+      m_clearButton = button(x, y, "[forget baseline]", menu_selector(Overlay::onForget));
+      button(x, y, "[save profile]", menu_selector(Overlay::onSave));
+      y -= LINE * 1.2f;
+
+      label(this, MARGIN, y, {0, 1}, GREY)->setString("Mod");
+      label(this, OWN_MS_X, y, {1, 1}, GREY)->setString("own ms");
+      m_baseHeader = label(this, BASE_X, y, {1, 1}, GREY);
+      label(this, OWN_X, y, {1, 1}, GREY)->setString("own %");
+      label(this, INCLUSIVE_X, y, {1, 1}, GREY)->setString("incl %");
+      y -= LINE;
+
       for (int i = 0; i < ROWS; i++)
       {
         Row row;
         row.name = label(this, MARGIN, y, {0, 1});
-        row.ownMillis = label(this, OWN_MS_X, y, {1, 1}, {120, 220, 120});
+        row.ownMillis = label(this, OWN_MS_X, y, {1, 1}, GREEN);
+        row.base = label(this, BASE_X, y, {1, 1}, GREY);
         row.own = label(this, OWN_X, y, {1, 1});
         row.inclusive = label(this, INCLUSIVE_X, y, {1, 1}, {170, 170, 180});
         // A click on the row picks the mod
@@ -115,28 +137,45 @@ namespace
       if (!isVisible())
         return;
       auto snapshot = profiler::snapshot();
-      auto const& window = snapshot.recent;
+      auto const& window = m_session ? snapshot.session : snapshot.recent;
+      auto const& baseline = baseline_file::current();
       auto const& profile = window.profile;
       auto samples = profile.samples();
 
+      m_viewButton->setString(m_session ? "[session]" : "[last 5 s]");
+      m_baselineButton->setString(baseline.empty() ? "[set baseline]" : "[new baseline]");
+      m_clearButton->setVisible(!baseline.empty());
+      m_clearItem->setEnabled(!baseline.empty());
+      m_baseHeader->setString(baseline.empty() ? "" : "base ms");
+
       auto fps = window.seconds > 0 ? window.frames / window.seconds : 0;
       auto frameMillis = window.frames ? window.seconds * 1000 / window.frames : 0;
-      m_title->setString(fmt::format("Mod Profiler   {:.0f} fps, {:.2f} ms a frame", fps, frameMillis).c_str());
+      m_title->setString(fmt::format("Mod Profiler   {:.0f} fps, {:.2f} ms a frame   {}", fps, frameMillis,
+                                     m_session ? fmt::format("session of {:.0f} s", window.seconds) : std::string("last 5 s"))
+                             .c_str());
       if (samples == 0)
       {
         m_summary->setString("No samples yet");
+        m_compare->setString("");
         for (auto& row : m_rows)
           clearRow(row);
         m_detail->setString("");
+        m_slow->setString("");
         return;
       }
       auto between = 100.0 * profile.between() / samples;
       auto idle = 100.0 * profile.idle() / samples;
       auto cost = costOf(window);
-      m_summary->setString(fmt::format("in frames {:.0f}%, between {:.0f}%, idle {:.0f}%   {:.0f} samples/s, stopped {:.1f} ms/s",
-                                       std::max(0.0, 100 - between - idle), between, idle, window.stats.samples / window.seconds,
+      m_summary->setString(fmt::format("in frames {:.0f}% ({:.2f} ms), between {:.0f}%, idle {:.0f}%   stopped {:.1f} ms/s",
+                                       std::max(0.0, 100 - between - idle), busyMillis(window), between, idle,
                                        cost.stoppedMillisPerSecond)
                                .c_str());
+      if (baseline.empty())
+        m_compare->setString("No baseline: [set baseline] keeps this session to compare the next ones with");
+      else
+        m_compare->setString(fmt::format("Baseline of {} ({:.0f} s): frame {:.2f} ms, work {:.2f} ms", baseline.saved,
+                                         baseline.seconds, baseline.frameMillis, baseline.busyMillis)
+                                 .c_str());
 
       auto top = topMods(window, ROWS, Order::Own);
       m_shown.clear();
@@ -152,19 +191,63 @@ namespace
         auto const& bucket = snapshot.buckets[share.bucket];
         m_shown.push_back(bucket.id);
         bool picked = bucket.id == m_picked;
-        row.name->setString(fit((picked ? "> " : "") + bucket.name, 34).c_str());
-        row.name->setColor(picked ? ccColor3B{255, 210, 90} : ccColor3B{255, 255, 255});
+        row.name->setString(fit((picked ? "> " : "") + bucket.name, 30).c_str());
+        row.name->setColor(picked ? GOLD : ccColor3B{255, 255, 255});
         row.ownMillis->setString(fmt::format("{:.2f}", share.ownMillisPerFrame).c_str());
         row.own->setString(fmt::format("{:.1f}", share.ownPercent).c_str());
         row.inclusive->setString(fmt::format("{:.1f}", share.inclusivePercent).c_str());
         row.button->setEnabled(true);
+
+        // Against the baseline: red when the mod takes more than it did
+        auto base = baseline.mods.find(bucket.id);
+        if (baseline.empty())
+          row.base->setString("");
+        else if (base == baseline.mods.end())
+        {
+          row.base->setString("new");
+          row.base->setColor(RED);
+        }
+        else
+        {
+          auto change = share.ownMillisPerFrame - base->second.ownMillis;
+          row.base->setString(fmt::format("{:.2f}", base->second.ownMillis).c_str());
+          row.base->setColor(change > 0.01 ? RED : change < -0.01 ? GREEN : GREY);
+        }
       }
       // Until a row is clicked, the busiest mod is the picked one
       if ((m_picked.empty() || !m_clicked) && !m_shown.empty())
         m_picked = m_shown.front();
 
-      m_detail->setString(detail(snapshot).c_str());
+      m_detail->setString(detail(snapshot, window).c_str());
       m_slow->setString(slowFrames(snapshot).c_str());
+    }
+
+  private:
+    struct Row
+    {
+      CCLabelBMFont* name = nullptr;
+      CCLabelBMFont* ownMillis = nullptr;
+      CCLabelBMFont* base = nullptr;
+      CCLabelBMFont* own = nullptr;
+      CCLabelBMFont* inclusive = nullptr;
+      CCMenuItem* button = nullptr;
+    };
+
+    // A text button at x, which moves on past it. The item is scaled, not the label: the item's size
+    // is what a click hits
+    CCLabelBMFont* button(float& x, float y, char const* text, SEL_MenuHandler handler)
+    {
+      auto label = CCLabelBMFont::create(text, "chatFont.fnt");
+      label->setColor(BUTTON);
+      auto item = CCMenuItemLabel::create(label, this, handler);
+      item->setScale(FONT_SCALE);
+      item->setAnchorPoint({0, 1});
+      item->setPosition({x, y});
+      m_menu->addChild(item);
+      if (handler == menu_selector(Overlay::onForget))
+        m_clearItem = item;
+      x += item->getContentSize().width * FONT_SCALE + 4;
+      return label;
     }
 
     void onRow(CCObject* sender)
@@ -178,20 +261,50 @@ namespace
       refresh(0);
     }
 
-  private:
-    struct Row
+    void onView(CCObject*)
     {
-      CCLabelBMFont* name = nullptr;
-      CCLabelBMFont* ownMillis = nullptr;
-      CCLabelBMFont* own = nullptr;
-      CCLabelBMFont* inclusive = nullptr;
-      CCMenuItem* button = nullptr;
-    };
+      m_session = !m_session;
+      refresh(0);
+    }
+
+    void onReset(CCObject*)
+    {
+      profiler::resetSession();
+      Notification::create("The session starts again", NotificationIcon::Info, 1.5f)->show();
+    }
+
+    void onBaseline(CCObject*)
+    {
+      auto snapshot = profiler::snapshot();
+      if (snapshot.session.seconds < MIN_BASELINE_SECONDS)
+      {
+        Notification::create("Play a few seconds more first", NotificationIcon::Warning)->show();
+        return;
+      }
+      auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+      std::tm local{};
+      localtime_s(&local, &now);
+      char saved[32];
+      std::strftime(saved, sizeof(saved), "%d.%m %H:%M", &local);
+      baseline_file::save(makeBaseline(snapshot.session, snapshot.buckets, saved));
+      log::info("Baseline saved: {}", summaryLine(snapshot.session, snapshot.buckets, 5));
+      Notification::create("The session is the baseline now: [reset] and compare", NotificationIcon::Success, 3.f)->show();
+      refresh(0);
+    }
+
+    void onForget(CCObject*)
+    {
+      baseline_file::clear();
+      refresh(0);
+    }
+
+    void onSave(CCObject*) { overlay::saveProfile(); }
 
     void clearRow(Row& row)
     {
       row.name->setString("");
       row.ownMillis->setString("");
+      row.base->setString("");
       row.own->setString("");
       row.inclusive->setString("");
       row.button->setEnabled(false);
@@ -218,13 +331,13 @@ namespace
     }
 
     // The picked mod's hooks and functions by their share of its own time
-    std::string detail(profiler::Snapshot const& snapshot)
+    std::string detail(profiler::Snapshot const& snapshot, Window const& window)
     {
       auto index = snapshot.buckets.find(m_picked);
       if (index < 0)
         return "";
       auto bucket = static_cast<uint32_t>(index);
-      auto const& profile = snapshot.recent.profile;
+      auto const& profile = window.profile;
       auto own = profile.at(bucket).own;
       if (own == 0)
         return fmt::format("{}: no own time", snapshot.buckets[bucket].name);
@@ -245,7 +358,7 @@ namespace
         lines++;
         for (auto const& place : top)
         {
-          text += fmt::format("\n  {:>3.0f}%  {}", 100.0 * place.samples / own, fit(shortName(nameOf(place.address)), 48));
+          text += fmt::format("\n  {:>3.0f}%  {}", 100.0 * place.samples / own, fit(shortName(nameOf(place.address)), 52));
           lines++;
         }
       };
@@ -256,14 +369,22 @@ namespace
 
     CCLabelBMFont* m_title = nullptr;
     CCLabelBMFont* m_summary = nullptr;
+    CCLabelBMFont* m_compare = nullptr;
     CCLabelBMFont* m_detail = nullptr;
     CCLabelBMFont* m_slow = nullptr;
+    CCLabelBMFont* m_baseHeader = nullptr;
+    CCLabelBMFont* m_viewButton = nullptr;
+    CCLabelBMFont* m_baselineButton = nullptr;
+    CCLabelBMFont* m_clearButton = nullptr;
+    CCMenuItemLabel* m_clearItem = nullptr;
     CCMenu* m_menu = nullptr;
     std::vector<Row> m_rows;
     // The mods in the rows, by ID, and the picked one
     std::vector<std::string> m_shown;
     std::string m_picked;
     bool m_clicked = false;
+    // The whole session instead of the last seconds
+    bool m_session = false;
   };
 
   Overlay* s_overlay = nullptr;
@@ -303,3 +424,17 @@ void overlay::setVisible(bool visible)
 void overlay::toggle() { setVisible(!visible()); }
 
 bool overlay::visible() { return s_overlay && s_overlay->isVisible(); }
+
+void overlay::saveProfile()
+{
+  Notification::create("Saving the last 10 seconds...", NotificationIcon::Loading, 1.5f)->show();
+  profiler::requestExport([](std::string const& file, std::string const& error)
+                          {
+                            if (!error.empty())
+                            {
+                              Notification::create("Not saved: " + error, NotificationIcon::Error)->show();
+                              return;
+                            }
+                            log::info("Saved the profile to {}, open it at https://www.speedscope.app", file);
+                            Notification::create("Saved: open it at speedscope.app (the folder is in the log)", NotificationIcon::Success, 4.f)->show(); });
+}

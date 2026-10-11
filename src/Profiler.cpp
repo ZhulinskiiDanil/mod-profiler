@@ -36,6 +36,8 @@ namespace
   std::function<void(std::string const&, std::string const&)> s_exportDone;
   // A span asked for, under s_mutex: its label
   std::optional<std::string> s_spanLabel;
+  std::atomic<bool> s_resetSession{false};
+  Baseline s_baseline;
   // Geode's hooks are in place: generated code can be looked up from then on
   std::atomic<bool> s_hooksReady{false};
 
@@ -462,6 +464,11 @@ namespace
         into.seconds += from.seconds;
         into.frames += from.frames;
       };
+      if (s_resetSession.exchange(false))
+      {
+        analyzer.session = {};
+        analyzer.slowFrames.clear();
+      }
       merge(analyzer.session, window);
       merge(analyzer.span, window);
       std::optional<std::string> spanLabel;
@@ -473,6 +480,13 @@ namespace
       {
         log::info("Since the last marker{}: {}, {} slow frames", spanLabel->empty() ? "" : " (" + *spanLabel + ")",
                   summaryLine(analyzer.span, analyzer.buckets, 5), analyzer.spanSlowFrames);
+        Baseline baseline;
+        {
+          std::lock_guard lock(s_mutex);
+          baseline = s_baseline;
+        }
+        if (!baseline.empty())
+          log::info("Since the last marker, {}", comparisonLine(analyzer.span, analyzer.buckets, baseline, 5));
         analyzer.span = {};
         analyzer.spanSlowFrames = 0;
       }
@@ -562,6 +576,14 @@ void profiler::markSpan(std::string label)
 {
   std::lock_guard lock(s_mutex);
   s_spanLabel = std::move(label);
+}
+
+void profiler::resetSession() { s_resetSession = true; }
+
+void profiler::setBaseline(Baseline baseline)
+{
+  std::lock_guard lock(s_mutex);
+  s_baseline = std::move(baseline);
 }
 
 void profiler::requestExport(std::function<void(std::string const& file, std::string const& error)> done)

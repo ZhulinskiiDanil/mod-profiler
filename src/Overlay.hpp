@@ -9,4 +9,6 @@ namespace overlay
   void toggle();
   void setVisible(bool visible);
   bool visible();
+  // The last 10 seconds to a file for speedscope.app, with a notification of how it went
+  void saveProfile();
 } // namespace overlay

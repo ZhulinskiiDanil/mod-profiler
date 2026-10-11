@@ -1,3 +1,4 @@
+#include "BaselineFile.hpp"
 #include "LoggerLink.hpp"
 #include "Overlay.hpp"
 #include "Profiler.hpp"
@@ -94,21 +95,6 @@ namespace
     profiler::setLoop(run, {mainLoop, pollEvents});
   }
 
-  // The last seconds to a file for speedscope.app, with a notification of where
-  void exportProfile()
-  {
-    Notification::create("Saving the last 10 seconds...", NotificationIcon::Loading, 1.5f)->show();
-    profiler::requestExport([](std::string const& file, std::string const& error)
-                            {
-                              if (!error.empty())
-                              {
-                                Notification::create("Not saved: " + error, NotificationIcon::Error)->show();
-                                return;
-                              }
-                              log::info("Saved the profile to {}, open it at https://www.speedscope.app", file);
-                              Notification::create("Saved: open it at speedscope.app (the folder is in the log)", NotificationIcon::Success, 4.f)->show(); });
-  }
-
   // MOD_PROFILER_SELFTEST=1 at launch: one slow frame of this mod's own, 40 seconds after the game
   // loaded, and the profile saved 5 seconds later, so a check can see the slow frame found, blamed on
   // the right mod and function, and in the file
@@ -125,7 +111,7 @@ namespace
   {
   public:
     void run(float) { selfTestSlowFrame(); }
-    void save(float) { exportProfile(); }
+    void save(float) { overlay::saveProfile(); }
   };
 
   // Counts the frames as a plain scheduler callback: a hook on the frame would put this mod on
@@ -159,7 +145,7 @@ $on_mod(Loaded)
   listenForKeybindSettingPresses("export-key", [](Keybind const&, bool down, bool repeat, double)
                                  {
                                    if (down && !repeat)
-                                     exportProfile(); });
+                                     overlay::saveProfile(); });
 }
 
 $on_game(Loaded)
@@ -182,6 +168,7 @@ $on_game(Loaded)
 
   logger_link::setWatching(Mod::get()->getSettingValue<bool>("logger-watch"));
   logger_link::setup();
+  baseline_file::load();
   overlay::setup();
   overlay::setVisible(Mod::get()->getSavedValue<bool>("overlay-visible", false));
 }
