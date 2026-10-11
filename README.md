@@ -35,6 +35,18 @@ Once a second, a line in Geode's log checks the profiler itself:
 - **deep**: stacks longer than 64 frames, cut there
 - **dropped**: samples the analysis had no room for
 
+## What it costs
+
+Measured in the main menu with 60 mods installed, 80 seconds each (the log line has these numbers live):
+
+| Sample every | Samples a second | Main thread stopped | Sampler thread | Analyzer thread |
+| --- | --- | --- | --- | --- |
+| 1 ms (default) | 1000 | 26 ms a second (2.6%), 26 us a sample | 1.9% of a core | 0.3% of a core |
+| 2 ms | 500 | 14 ms a second (1.4%) | 0.9% of a core | 0.2% of a core |
+| 5 ms | 200 | 7 ms a second (0.7%) | under 0.5% | 0.2% of a core |
+
+The main thread standing still is the cost that matters: at 1 ms a frame takes about 2.6% longer. The table itself shows up in the list as Mod Profiler, with about 0.1% of own time. The threads' CPU time comes from `GetThreadTimes`, which counts in 15.6 ms steps: the lowest numbers are rough.
+
 ## Settings
 
 | Setting | Default | What it does |

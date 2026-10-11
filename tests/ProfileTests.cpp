@@ -212,6 +212,20 @@ static void testStatsFromTicks()
   CHECK(near(total.suspendMaxMicros, 45));
 }
 
+static void testCost()
+{
+  Window window;
+  window.seconds = 2;
+  window.stats.suspendTotalMicros = 60'000;
+  window.stats.samplerCpuMillis = 40;
+  window.stats.analyzerCpuMillis = 10;
+  auto cost = costOf(window);
+  CHECK(near(cost.stoppedMillisPerSecond, 30));
+  CHECK(near(cost.samplerPercent, 2));
+  CHECK(near(cost.analyzerPercent, 0.5));
+  CHECK(near(costOf(Window{}).samplerPercent, 0));
+}
+
 // ! --- The diagnostics line --- !
 
 static bool contains(std::string const& text, char const* part) { return text.find(part) != std::string::npos; }
@@ -227,6 +241,7 @@ static void testDiagnosticsLine()
   auto line = diagnosticsLine(window, sampleBuckets(), 3);
   CHECK(contains(line, "10 samples in 1.00 s"));
   CHECK(contains(line, "suspended avg 15.0 us, max 40.0 us (stopping avg 5.0 us, max 20.0 us)"));
+  CHECK(contains(line, "cost: stopped 0.1 ms/s, sampler 0.0%, analyzer 0.0% of a core"));
   CHECK(contains(line, "100 fps"));
   CHECK(contains(line, "self: Geometry Dash 60.0%, Cocos2d 0.0%, Other 0.0%, Hook handlers 0.0%, mods 40.0%"));
   CHECK(contains(line, "inclusive: zhulis.a 40.0%, zhulis.b 10.0%"));
@@ -280,6 +295,7 @@ int main()
   testTopMods();
   testDescribe();
   testStatsFromTicks();
+  testCost();
   testDiagnosticsLine();
   testDiagnosticsProblems();
   testDiagnosticsNoSamples();

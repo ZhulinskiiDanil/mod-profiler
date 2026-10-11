@@ -26,6 +26,10 @@ namespace sampler
   uint64_t iteration();
   // Samples the ring had no room for
   uint64_t dropped();
+  // The sampler thread's CPU time so far, in 100 ns units
+  uint64_t cpuTime();
+  // The calling thread's CPU time, in 100 ns units
+  uint64_t threadCpuTime();
   void setInterval(double millis);
 
   // QueryPerformanceFrequency, for turning ticks into time

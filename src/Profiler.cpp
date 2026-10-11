@@ -216,6 +216,8 @@ namespace
     auto next = last + std::chrono::seconds(1);
     auto frames = s_frames.load();
     auto dropped = sampler::dropped();
+    auto samplerCpu = sampler::cpuTime();
+    auto analyzerCpu = sampler::threadCpuTime();
     // The sampler waits for the first map
     refreshMap(analyzer);
 
@@ -241,6 +243,13 @@ namespace
       auto droppedNow = sampler::dropped();
       window.stats.dropped = droppedNow - dropped;
       dropped = droppedNow;
+      // A restarted sampler starts its count again
+      auto samplerCpuNow = sampler::cpuTime();
+      window.stats.samplerCpuMillis = samplerCpuNow >= samplerCpu ? (samplerCpuNow - samplerCpu) / 10'000.0 : 0;
+      samplerCpu = samplerCpuNow;
+      auto analyzerCpuNow = sampler::threadCpuTime();
+      window.stats.analyzerCpuMillis = (analyzerCpuNow - analyzerCpu) / 10'000.0;
+      analyzerCpu = analyzerCpuNow;
 
       if (s_logDiagnostics.load(std::memory_order_relaxed) && (sampler::running() || window.stats.samples > 0))
         log::info("{}", diagnosticsLine(window, analyzer.buckets, 5));

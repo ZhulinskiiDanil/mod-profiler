@@ -77,6 +77,9 @@ struct SamplerStats
   double suspendMaxMicros = 0;
   double contextTotalMicros = 0;
   double contextMaxMicros = 0;
+  // CPU time of the profiler's own threads meanwhile
+  double samplerCpuMillis = 0;
+  double analyzerCpuMillis = 0;
 
   void add(Sample const& sample, double microsPerTick);
   void merge(SamplerStats const& other);
@@ -92,6 +95,17 @@ struct Window
   // Frames the game drew meanwhile, 0 when unknown
   uint64_t frames = 0;
 };
+
+// What the profiler costs, from a window's stats
+struct Cost
+{
+  // The main thread standing still, a second
+  double stoppedMillisPerSecond = 0;
+  // Of one CPU core
+  double samplerPercent = 0;
+  double analyzerPercent = 0;
+};
+Cost costOf(Window const& window);
 
 struct Share
 {

@@ -123,6 +123,19 @@ void SamplerStats::merge(SamplerStats const& other)
   suspendMaxMicros = std::max(suspendMaxMicros, other.suspendMaxMicros);
   contextTotalMicros += other.contextTotalMicros;
   contextMaxMicros = std::max(contextMaxMicros, other.contextMaxMicros);
+  samplerCpuMillis += other.samplerCpuMillis;
+  analyzerCpuMillis += other.analyzerCpuMillis;
+}
+
+Cost costOf(Window const& window)
+{
+  Cost cost;
+  if (window.seconds <= 0)
+    return cost;
+  cost.stoppedMillisPerSecond = window.stats.suspendTotalMicros / 1000.0 / window.seconds;
+  cost.samplerPercent = window.stats.samplerCpuMillis / 10.0 / window.seconds;
+  cost.analyzerPercent = window.stats.analyzerCpuMillis / 10.0 / window.seconds;
+  return cost;
 }
 
 // ! --- Shares --- !
@@ -228,6 +241,9 @@ std::string diagnosticsLine(Window const& window, Buckets const& buckets, size_t
   // Waiting for the thread to stop is up to Windows, the rest is the walk
   if (stats.samples)
     line += format(" (stopping avg %.1f us, max %.1f us)", stats.contextAverageMicros(), stats.contextMaxMicros);
+  auto cost = costOf(window);
+  line += format(", cost: stopped %.1f ms/s, sampler %.1f%%, analyzer %.1f%% of a core", cost.stoppedMillisPerSecond,
+                 cost.samplerPercent, cost.analyzerPercent);
   if (window.frames > 0 && window.seconds > 0)
     line += format(", %.0f fps", window.frames / window.seconds);
 

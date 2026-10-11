@@ -129,9 +129,10 @@ namespace
       }
       auto between = 100.0 * profile.between() / samples;
       auto idle = 100.0 * profile.idle() / samples;
-      m_summary->setString(fmt::format("in frames {:.0f}%, between {:.0f}%, idle {:.0f}%   {:.0f} samples/s, stop {:.0f} us",
+      auto cost = costOf(window);
+      m_summary->setString(fmt::format("in frames {:.0f}%, between {:.0f}%, idle {:.0f}%   {:.0f} samples/s, stopped {:.1f} ms/s",
                                        std::max(0.0, 100 - between - idle), between, idle, window.stats.samples / window.seconds,
-                                       window.stats.suspendAverageMicros())
+                                       cost.stoppedMillisPerSecond)
                                .c_str());
 
       auto top = topMods(window, ROWS, Order::Own);

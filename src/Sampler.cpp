@@ -22,6 +22,8 @@ namespace
   std::atomic<bool> s_alive{false};
   std::atomic<uint64_t> s_iteration{0};
   std::atomic<uint64_t> s_dropped{0};
+  // Kept up to date by the thread itself every few hundred samples
+  std::atomic<uint64_t> s_cpuTime{0};
   // In the waitable timer's units of 100 ns
   std::atomic<int64_t> s_interval{10'000};
   int64_t s_frequency = 1;
@@ -250,7 +252,8 @@ namespace
       slot->suspendTicks = static_cast<uint32_t>(std::min<int64_t>(end.QuadPart - start.QuadPart, UINT32_MAX));
       slot->contextTicks = static_cast<uint32_t>(std::min<int64_t>(stopped.QuadPart - start.QuadPart, UINT32_MAX));
       ring->commit();
-      s_iteration.fetch_add(1, std::memory_order_release);
+      if (s_iteration.fetch_add(1, std::memory_order_release) % 64 == 0)
+        s_cpuTime.store(sampler::threadCpuTime(), std::memory_order_relaxed);
     }
 
     if (timer)
@@ -306,6 +309,17 @@ bool sampler::alive() { return s_alive.load(std::memory_order_acquire); }
 
 uint64_t sampler::iteration() { return s_iteration.load(std::memory_order_acquire); }
 uint64_t sampler::dropped() { return s_dropped.load(std::memory_order_relaxed); }
+uint64_t sampler::cpuTime() { return s_cpuTime.load(std::memory_order_relaxed); }
+
+uint64_t sampler::threadCpuTime()
+{
+  FILETIME creation, exit, kernel, user;
+  if (!GetThreadTimes(GetCurrentThread(), &creation, &exit, &kernel, &user))
+    return 0;
+  auto value = [](FILETIME time)
+  { return (static_cast<uint64_t>(time.dwHighDateTime) << 32) | time.dwLowDateTime; };
+  return value(kernel) + value(user);
+}
 
 void sampler::setInterval(double millis)
 {
