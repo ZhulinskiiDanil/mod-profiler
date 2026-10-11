@@ -19,6 +19,11 @@
 		"info": "Report bugs on GitHub or in the Discord server",
 		"url": "https://github.com/ZhulinskiiDanil/mod-profiler/issues"
 	},
+	"api": {
+		"include": [
+			"include/*.hpp"
+		]
+	},
 	"dependencies": {
 		"zhulis.improved-logger": {
 			"version": ">=v1.5.0",

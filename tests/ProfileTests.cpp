@@ -110,6 +110,31 @@ static void testMerge()
   CHECK(a.at(A).inclusive == 0);
 }
 
+static void testZones()
+{
+  auto map = sampleMap();
+  Profile profile;
+  auto zoned = stack({0x3010, 0x1010});
+  zoned.zone = 2;
+  profile.add(zoned, map);
+  profile.add(zoned, map);
+  profile.add(stack({0x3010}), map);
+  CHECK(profile.zones().size() == 1);
+  CHECK(profile.zones().at(2) == 2);
+  // Waiting in a zone isn't the zone's time
+  Attribution attribution;
+  attribution.waits = {{0x5000, 0x5020}};
+  attribution.finish();
+  auto waiting = stack({0x5010, 0x3010});
+  waiting.zone = 2;
+  profile.add(waiting, map, &attribution);
+  CHECK(profile.zones().at(2) == 2);
+  Profile other;
+  other.add(zoned, map);
+  profile.merge(other);
+  CHECK(profile.zones().at(2) == 3);
+}
+
 static void testPlaces()
 {
   Profile::Places places;
@@ -338,6 +363,7 @@ int main()
   testEmptySamplesAreSkipped();
   testMerge();
   testPlaces();
+  testZones();
   testShares();
   testSharesWithoutFrames();
   testTopMods();

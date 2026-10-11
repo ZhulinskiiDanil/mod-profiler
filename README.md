@@ -20,6 +20,22 @@ A [Geode](https://geode-sdk.org) mod for Geometry Dash that shows how much of ev
 - **[set baseline]** keeps the session's numbers, even after a restart. The table then has a column with each mod's own time in the baseline, red when it takes more now. Before and after a mod update, with a mod turned off or on: **[reset]**, play the same thing, compare. **[last 5 s]** goes through the views: the last 5 seconds, this scene, the whole session, the game's start
 - With [Improved Logger](https://github.com/ZhulinskiiDanil/improved-geode-logger): the numbers are pinned in its console, and its marker key (`Ctrl+Shift+M` in the game) logs the profile since the last marker, compared with the baseline if there is one
 
+## Zones, for your own mod
+
+Mark parts of your mod's code and the table shows their time under your mod, in ms a frame, with or without a PDB:
+
+```cpp
+#include "ModProfiler.hpp"   // copy include/ModProfiler.hpp, or add zhulis.mod-profiler with "required": false
+
+void HairNode::update(float dt)
+{
+    mod_profiler::Zone zone("hair simulation");   // until the end of the block
+    simulate(dt);
+}
+```
+
+No hard dependency: without Mod Profiler a zone does nothing but check a cached pointer. Zones nest (a sample counts for the innermost), only the main thread's count, and the name must stay valid while the zone is open (a string literal is fine). The session's zones are in the log when the game closes. Checked with a zone around exactly 0.5 ms of work a frame: the table said 0.50 ms.
+
 ## What it measures
 
 Every sample is one moment of the main thread. The table adds up the last 5 seconds (or the session):

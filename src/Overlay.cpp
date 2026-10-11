@@ -2,6 +2,7 @@
 
 #include "BaselineFile.hpp"
 #include "Profiler.hpp"
+#include "ZonesApi.hpp"
 
 #include <Geode/Geode.hpp>
 #include <Geode/ui/OverlayManager.hpp>
@@ -392,6 +393,27 @@ namespace
           lines++;
         }
       };
+      // Its zones first (ModProfiler.hpp): what the mod named itself, in ms a frame
+      auto const& mod = snapshot.buckets[bucket].id;
+      std::vector<std::pair<uint64_t, std::string>> zoned;
+      for (auto const& [id, samples] : profile.zones())
+      {
+        auto name = zones::registry().nameOf(id);
+        if (name.mod == mod)
+          zoned.push_back({samples, name.name});
+      }
+      if (!zoned.empty())
+      {
+        std::sort(zoned.begin(), zoned.end(), std::greater<>());
+        text += "\nIn its zones";
+        lines++;
+        for (size_t i = 0; i < zoned.size() && i < 3; i++)
+        {
+          auto millis = window.frames ? 1000.0 * zoned[i].first / profile.samples() * window.seconds / window.frames : 0;
+          text += fmt::format("\n  {:.2f} ms  {}", millis, fit(zoned[i].second, 48));
+          lines++;
+        }
+      }
       list("Under its hooks of", profile.hooks(), 3);
       list("In its functions", profile.functions(), static_cast<size_t>(std::max(1, DETAIL_LINES - lines - 1)));
       return text;

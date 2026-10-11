@@ -39,8 +39,11 @@ add_test(NAME compare COMMAND compare-tests)
 
 # The sampler itself on Windows: a thread in a known chain of functions, suspended and walked
 if (WIN32)
-    add_executable(sampler-tests SamplerTests.cpp ../src/Sampler.cpp ../src/Modules.cpp ../src/ModuleMap.cpp
+    add_executable(sampler-tests SamplerTests.cpp ../src/Sampler.cpp ../src/Modules.cpp ../src/ModuleMap.cpp ../src/Zones.cpp
         ../src/Unwind.cpp ../src/Code.cpp ../src/Profile.cpp ../src/Attribution.cpp)
     target_link_libraries(sampler-tests psapi)
     add_test(NAME sampler COMMAND sampler-tests)
 endif()
+
+add_executable(zones-tests ZonesTests.cpp ../src/Zones.cpp)
+add_test(NAME zones COMMAND zones-tests)

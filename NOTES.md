@@ -123,6 +123,16 @@ Start: **Sun Oct 11 03:33:17 2026** (the first `date` of the run).
   samples a second, 29.7 us a sample, the analyzer 0.38% of a core. The game's memory 1.370 GB after a
   minute, 1.392 GB after 21: growth flattens (+0.2 MB in the last 4 minutes).
 
+- 06:38 **hang reports** (own idea): a slow frame is only seen when it ends, a frozen game never ends it. A
+  frame going on for 2 s is attributed and logged while it lasts. Then **deadlocks**: a frame waiting on a
+  lock or another thread (`NtWaitForSingleObject`, `NtWaitForAlertByThreadId`, keyed events) 80% of it.
+  False alarms found and fixed with real checks: a minimized game (20 s, waiting for time and messages) was
+  one 20 s "slow frame", and closing the game (Cocos destroying textures) was a "hang". Neither is reported
+  now. The session is summed up in the log when the game closes.
+- 06:57 v0.5.0 released (pre-release) after a check in a level.
+- 07:00 how exact the numbers are, with a known cost (`MOD_PROFILER_SELFTEST=cost`, 0.500 ms of every frame
+  in the profiler's own code): measured 0.514 ms a frame on average over 30 s.
+
 ## Numbers
 
 | Check | Samples/s | Suspended avg | Max | Scanned/s | Result |
@@ -138,4 +148,9 @@ Start: **Sun Oct 11 03:33:17 2026** (the first `date` of the run).
 | sampling off, 80 s in a level | 0 | - | - | - | no diagnostics, no slow frames, table says "No samples yet" |
 | v0.4.0, start + 20 s menu + 75 s level | 997 | 28.9 us | 46.0 us avg in the worst second | 20 | start counted (8.0 s), no gap, no crash, analyzer 0.69% |
 | soak, 21 min in a level, table shown | 999 | 29.7 us | 50.4 us avg in the worst second, 1160 us single | 2.2 | 1264 lines, no gap, no crash, memory flat after ~5 min |
+| hang self test (4.5 s frame) | 1000 | - | - | - | reported at 2.7 s: Mod Profiler 100% in selfTestHang, then "Slow frame: 4502 ms" |
+| deadlock self test (4 s wait) | 1000 | - | - | - | reported at 2.5 s: waiting on a lock 100%, in a call of Mod Profiler |
+| minimized 20 s, then closed | - | - | - | - | no hang, no slow frame reported |
+| cost self test (0.500 ms a frame) | 1000 | - | - | - | measured 0.514 ms a frame (30 s mean, 0.49-0.57 a second) |
+| v0.5.0, start + 20 s menu + 100 s level | 999 | 29.3 us | 40.4 us avg in the worst second | 20 | no gap, no crash |
 | sampler test (Windows, MSVC and clang) | 1000 | 22-26 us | - | - | 490-499 of 490-499 samples walk the chain, 292-297 of 292-297 deep ones cut at 64 |

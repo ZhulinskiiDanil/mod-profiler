@@ -6,6 +6,7 @@
 #include "ModuleMap.hpp"
 #include "Ring.hpp"
 #include "Sample.hpp"
+#include "Zones.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -31,6 +32,8 @@ namespace sampler
   // The calling thread's CPU time, in 100 ns units
   uint64_t threadCpuTime();
   void setInterval(double millis);
+  // The main thread's zones: each sample notes the innermost one
+  void setZones(ZoneStack const* zones);
 
   // QueryPerformanceFrequency, for turning ticks into time
   int64_t ticksPerSecond();

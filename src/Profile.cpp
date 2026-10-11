@@ -23,9 +23,11 @@ void Profile::add(Sample const& sample, ModuleMap const& map, Attribution const*
   // Sample numbers start at 1, so a zero in m_seen means never
   auto id = ++m_samples;
 
+  bool waiting = false;
   if (attribution)
   {
     auto verdict = attribute(sample, map, *attribution);
+    waiting = verdict.idle || verdict.between;
     if (verdict.idle)
       m_idle++;
     if (verdict.between)
@@ -39,6 +41,9 @@ void Profile::add(Sample const& sample, ModuleMap const& map, Attribution const*
         m_hooks[{owner, verdict.hook}]++;
     }
   }
+
+  if (sample.zone && !waiting)
+    m_zones[sample.zone]++;
 
   grow(map.bucketOf(sample.frames[0])).self++;
   for (int i = 0; i < sample.depth && i < MAX_FRAMES; i++)
@@ -68,6 +73,8 @@ void Profile::merge(Profile const& other)
     m_functions[place] += samples;
   for (auto const& [place, samples] : other.m_hooks)
     m_hooks[place] += samples;
+  for (auto const& [zone, samples] : other.m_zones)
+    m_zones[zone] += samples;
   // Sample numbers go on from the merged count: older marks are lower, so nothing is skipped later
   std::fill(m_seen.begin(), m_seen.end(), 0);
 }
@@ -81,6 +88,7 @@ void Profile::clear()
   m_between = 0;
   m_functions.clear();
   m_hooks.clear();
+  m_zones.clear();
 }
 
 std::vector<Place> topPlaces(Profile::Places const& places, uint32_t bucket, size_t limit)

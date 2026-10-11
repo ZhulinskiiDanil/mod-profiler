@@ -26,6 +26,8 @@ struct Sample
   uint32_t contextTicks = 0;
   uint16_t depth = 0;
   uint16_t flags = 0;
+  // The main thread's innermost zone (ModProfiler.hpp), 0 for none
+  uint16_t zone = 0;
   // frames[0] is where the thread was, the rest are return addresses, callers last
   uintptr_t frames[MAX_FRAMES] = {};
 };

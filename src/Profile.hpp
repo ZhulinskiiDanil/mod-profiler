@@ -41,6 +41,8 @@ public:
   using Places = std::map<std::pair<uint32_t, uintptr_t>, uint64_t>;
   Places const& functions() const { return m_functions; }
   Places const& hooks() const { return m_hooks; }
+  // Samples by the zone they were taken in, not idle or between frames
+  std::map<uint16_t, uint64_t> const& zones() const { return m_zones; }
 
 private:
   BucketTime& grow(uint32_t bucket);
@@ -53,6 +55,7 @@ private:
   uint64_t m_between = 0;
   Places m_functions;
   Places m_hooks;
+  std::map<uint16_t, uint64_t> m_zones;
 };
 
 struct Place

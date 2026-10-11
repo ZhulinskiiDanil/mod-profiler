@@ -31,9 +31,10 @@ A map of the code and the reasons behind the parts that aren't obvious.
 | `Spikes.cpp` | Slow frames from the frames' end times, and their culprits |
 | `Compare.cpp` | A baseline from a session, and what changed since |
 | `Speedscope.cpp` | The profile file for speedscope.app |
+| `Zones.cpp`, `ZonesApi.cpp`, `include/ModProfiler.hpp` | Zones: the main thread's zone stack, their names, the API for other mods |
 | `Ring.hpp`, `Sample.hpp` | The ring and what goes into it |
 
-`Ring`, `ModuleMap`, `Attribution`, `Unwind`, `Code`, `Profile`, `Spikes`, `Compare` and `Speedscope` include neither Windows nor Geode, so `tests/` builds them alone (CI runs them with GCC too).
+`Ring`, `ModuleMap`, `Attribution`, `Unwind`, `Code`, `Profile`, `Spikes`, `Compare`, `Speedscope` and `Zones` include neither Windows nor Geode, so `tests/` builds them alone (CI runs them with GCC too).
 
 ## Decisions worth knowing
 
@@ -51,6 +52,7 @@ A map of the code and the reasons behind the parts that aren't obvious.
 - **Hook dispatch is a row of its own.** Time with the thread in a hook handler's code, or in the hook library's bookkeeping a handler calls, is the hooks' cost (the HOOKS bucket), listed like a mod.
 - **Exits and epilogs.** In the pops and ret ending an epilog the frame register may be the caller's already, so the check uses RSP there, but only when the bytes really are pops then ret: that's when `RtlVirtualUnwind` reads from RSP too.
 - **The sampler is tested for real.** `tests/SamplerTests.cpp` (Windows only, MSVC in CI) runs the real sampler on a thread stuck in a known chain of functions: every sample has to walk the chain in order down to the thread's start, every sample of a deeper recursion has to be cut at 64 frames and marked.
+- **Zones cost a pointer check and two writes.** The API header asks for a table of two function pointers once (one Geode event) and keeps it: a zone isn't an event per call. The profiler keeps the main thread's zones in a fixed stack: an id is written, then the depth (release), and the sampler reads the depth, then one id, while the thread is suspended: a read of the profiler's own memory, no lock. Names are interned on the main thread (cached by their pointer and checked against the text), read by the analyzer under a mutex.
 - **A slow frame's culprit needs a fair share.** The mod with the most own samples in the frame is the culprit only with 20% of them or more. Otherwise it's the game's (or nobody's: waiting).
 - **The baseline is kept by mod ID, not bucket number.** Bucket numbers follow the order modules are seen in, which changes between launches.
 - **Improved Logger is optional at build time too.** Its API header is copied in (its docs suggest it): the mod builds without it, and the calls do nothing when it's not there. Its markers are seen by listening to its marker keybind, there's no event for them.

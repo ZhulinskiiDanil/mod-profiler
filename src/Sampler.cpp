@@ -26,6 +26,7 @@ namespace
   std::atomic<uint64_t> s_cpuTime{0};
   // In the waitable timer's units of 100 ns
   std::atomic<int64_t> s_interval{10'000};
+  std::atomic<ZoneStack const*> s_zones{nullptr};
   int64_t s_frequency = 1;
 
   // How far a scan looks for the next return address, and how many scans a sample gets
@@ -249,6 +250,8 @@ namespace
       }
       slot->depth = 0;
       slot->flags = 0;
+      slot->zone = 0;
+      auto zones = s_zones.load(std::memory_order_acquire);
       Bounds bounds{.high = reinterpret_cast<uintptr_t>(s_mainTib->StackBase)};
 
       LARGE_INTEGER start, stopped, end;
@@ -264,6 +267,9 @@ namespace
       context.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
       auto gotContext = GetThreadContext(s_mainThread, &context);
       QueryPerformanceCounter(&stopped);
+      // A plain read of this mod's memory: the stack's depth, then one id
+      if (zones)
+        slot->zone = zones->top();
       if (gotContext)
       {
         // The stack can be read from where the thread is up to its base. Elsewhere (a fiber), only RIP
@@ -359,6 +365,8 @@ void sampler::setInterval(double millis)
 }
 
 int64_t sampler::ticksPerSecond() { return s_frequency; }
+
+void sampler::setZones(ZoneStack const* zones) { s_zones.store(zones, std::memory_order_release); }
 
 int64_t sampler::now()
 {

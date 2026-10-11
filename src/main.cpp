@@ -1,7 +1,10 @@
+#include "../include/ModProfiler.hpp"
 #include "BaselineFile.hpp"
+#include "ZonesApi.hpp"
 #include "LoggerLink.hpp"
 #include "Overlay.hpp"
 #include "Profiler.hpp"
+#include "Sampler.hpp"
 
 #include <Geode/Geode.hpp>
 
@@ -130,6 +133,8 @@ namespace
   // Exactly this long every frame: the table's own ms for this mod has to say about the same
   void __declspec(noinline) selfTestCost()
   {
+    // Through the API like any mod: the zone has to come out at the same 0.5 ms
+    mod_profiler::Zone zone("self test cost");
     auto until = std::chrono::steady_clock::now() + std::chrono::microseconds(500);
     volatile uint64_t spin = 0;
     while (std::chrono::steady_clock::now() < until)
@@ -180,6 +185,10 @@ namespace
 
 $on_mod(Loaded)
 {
+  // Before the other mods load: their first zone asks for the API, once
+  zones::setup();
+  sampler::setZones(&zones::stack());
+
   // Loaded on the main thread: the one to sample
   if (!profiler::start(readOptions()))
     return;
@@ -244,6 +253,18 @@ $on_game(Exiting)
 {
   profiler::exiting();
   auto snapshot = profiler::snapshot();
-  if (snapshot->session.profile.samples() > 0)
-    log::info("The session: {}", summaryLine(snapshot->session, snapshot->buckets, 8));
+  auto const& session = snapshot->session;
+  if (session.profile.samples() == 0)
+    return;
+  log::info("The session: {}", summaryLine(session, snapshot->buckets, 8));
+  // Mods' zones, in ms a frame
+  std::string zones;
+  for (auto const& [id, samples] : session.profile.zones())
+  {
+    auto name = zones::registry().nameOf(id);
+    auto millis = session.frames ? 1000.0 * samples / session.profile.samples() * session.seconds / session.frames : 0;
+    zones += fmt::format("{}{}: {} {:.2f} ms", zones.empty() ? "" : ", ", name.mod, name.name, millis);
+  }
+  if (!zones.empty())
+    log::info("The session's zones: {}", zones);
 }
