@@ -44,6 +44,10 @@ namespace profiler
   void frame();
   // The mods are loaded and have made their hooks: generated code can be looked up
   void hooksReady();
+  // A summary of the time since the last call (or the start) goes to the log at the analyzer's next
+  // second: a profile between two markers
+  void markSpan(std::string label);
+
   // Saves the last seconds of samples for speedscope.app, on the analyzer thread at its next
   // second. `done` gets the file, or an error, on the main thread
   void requestExport(std::function<void(std::string const& file, std::string const& error)> done);

@@ -228,6 +228,31 @@ namespace
   }
 } // namespace
 
+std::string summaryLine(Window const& window, Buckets const& buckets, size_t topCount)
+{
+  auto const& profile = window.profile;
+  std::string line = format("%.1f s", window.seconds);
+  if (window.frames > 0 && window.seconds > 0)
+    line += format(", %.0f fps, %.2f ms a frame", window.frames / window.seconds, window.seconds * 1000 / window.frames);
+  if (profile.samples() == 0)
+    return line + ", no samples";
+  auto between = 100.0 * profile.between() / profile.samples();
+  auto idle = 100.0 * profile.idle() / profile.samples();
+  line += format(", in frames %.0f%%, between frames %.0f%%, idle %.0f%%", std::max(0.0, 100 - between - idle), between, idle);
+  line += " | own:";
+  size_t shown = 0;
+  for (auto const& share : topMods(window, topCount, Order::Own))
+  {
+    if (share.ownPercent <= 0)
+      continue;
+    auto const& name = share.bucket < buckets.size() ? buckets[share.bucket].name : std::string("?");
+    line += format("%s %s %.2f ms (%.1f%%)", shown++ ? "," : "", name.c_str(), share.ownMillisPerFrame, share.ownPercent);
+  }
+  if (shown == 0)
+    line += " none";
+  return line;
+}
+
 std::string diagnosticsLine(Window const& window, Buckets const& buckets, size_t topCount)
 {
   auto const& stats = window.stats;

@@ -262,6 +262,24 @@ static void testDiagnosticsLine()
   CHECK(!contains(line, "dropped"));
 }
 
+static void testSummaryLine()
+{
+  // Own time needs an attribution: give the window some by hand
+  auto map = sampleMap();
+  Attribution attribution;
+  attribution.finish();
+  Window window;
+  window.seconds = 2;
+  window.frames = 200;
+  for (int i = 0; i < 3; i++)
+    window.profile.add(stack({0x3010, 0x2010}), map, &attribution);
+  window.profile.add(stack({0x2010}), map, &attribution);
+  auto line = summaryLine(window, sampleBuckets(), 3);
+  CHECK(contains(line, "2.0 s, 100 fps, 10.00 ms a frame, in frames 100%, between frames 0%, idle 0%"));
+  CHECK(contains(line, "own: A 7.50 ms (75.0%)"));
+  CHECK(contains(summaryLine(Window{}, sampleBuckets(), 3), "0.0 s, no samples"));
+}
+
 static void testDiagnosticsProblems()
 {
   auto window = sampleWindow();
@@ -308,6 +326,7 @@ int main()
   testStatsFromTicks();
   testCost();
   testDiagnosticsLine();
+  testSummaryLine();
   testDiagnosticsProblems();
   testDiagnosticsNoSamples();
   testDiagnosticsNoMods();

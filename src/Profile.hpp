@@ -135,5 +135,8 @@ std::string shortName(std::string name);
 // The frames of a sample, innermost first, " < " between them
 std::string describeStack(Sample const& sample, ModuleMap const& map);
 
+// A window in a few words, for a person: how long, fps, the frame's share, the mods with the most own time
+std::string summaryLine(Window const& window, Buckets const& buckets, size_t topCount);
+
 // The once-a-second line of the self-diagnostics
 std::string diagnosticsLine(Window const& window, Buckets const& buckets, size_t topCount);

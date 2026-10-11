@@ -14,6 +14,7 @@
 #include <deque>
 #include <fstream>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <unordered_set>
 
@@ -33,6 +34,8 @@ namespace
   Ring<int64_t> s_frameEnds(4096);
   // An export asked for, under s_mutex
   std::function<void(std::string const&, std::string const&)> s_exportDone;
+  // A span asked for, under s_mutex: its label
+  std::optional<std::string> s_spanLabel;
   // Geode's hooks are in place: generated code can be looked up from then on
   std::atomic<bool> s_hooksReady{false};
 
@@ -79,6 +82,9 @@ namespace
     std::deque<Sample> held;
     FrameClock clock;
     std::deque<profiler::SlowFrame> slowFrames;
+    // Since the last marker
+    Window span;
+    size_t spanSlowFrames = 0;
   };
 
   // At most this many samples are held for the slow frames and the export: about 10 seconds.
@@ -241,6 +247,7 @@ namespace
           log::info("Slow frame stack: {}", slow.stacks.front());
       }
 
+      analyzer.spanSlowFrames++;
       analyzer.slowFrames.push_back(std::move(slow));
       while (analyzer.slowFrames.size() > profiler::KEPT_SLOW_FRAMES)
         analyzer.slowFrames.pop_front();
@@ -456,6 +463,19 @@ namespace
         into.frames += from.frames;
       };
       merge(analyzer.session, window);
+      merge(analyzer.span, window);
+      std::optional<std::string> spanLabel;
+      {
+        std::lock_guard lock(s_mutex);
+        spanLabel.swap(s_spanLabel);
+      }
+      if (spanLabel)
+      {
+        log::info("Since the last marker{}: {}, {} slow frames", spanLabel->empty() ? "" : " (" + *spanLabel + ")",
+                  summaryLine(analyzer.span, analyzer.buckets, 5), analyzer.spanSlowFrames);
+        analyzer.span = {};
+        analyzer.spanSlowFrames = 0;
+      }
       analyzer.recent.push_back(window);
       while (analyzer.recent.size() > profiler::RECENT_SECONDS)
         analyzer.recent.pop_front();
@@ -537,6 +557,12 @@ void profiler::frame()
 }
 
 void profiler::hooksReady() { s_hooksReady = true; }
+
+void profiler::markSpan(std::string label)
+{
+  std::lock_guard lock(s_mutex);
+  s_spanLabel = std::move(label);
+}
 
 void profiler::requestExport(std::function<void(std::string const& file, std::string const& error)> done)
 {

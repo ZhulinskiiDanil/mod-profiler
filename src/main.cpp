@@ -1,3 +1,4 @@
+#include "LoggerLink.hpp"
 #include "Overlay.hpp"
 #include "Profiler.hpp"
 
@@ -146,7 +147,9 @@ $on_mod(Loaded)
   profiler::setMods(loadedMods());
 
   listenForAllSettingChanges([](std::string_view, std::shared_ptr<SettingV3>)
-                             { profiler::setOptions(readOptions()); });
+                             {
+                               profiler::setOptions(readOptions());
+                               logger_link::setWatching(Mod::get()->getSettingValue<bool>("logger-watch")); });
 
   listenForKeybindSettingPresses("overlay-key", [](Keybind const&, bool down, bool repeat, double)
                                  {
@@ -177,6 +180,8 @@ $on_game(Loaded)
     CCDirector::get()->getScheduler()->scheduleSelector(schedule_selector(SelfTest::save), test, 0, 0, 45, false);
   }
 
+  logger_link::setWatching(Mod::get()->getSettingValue<bool>("logger-watch"));
+  logger_link::setup();
   overlay::setup();
   overlay::setVisible(Mod::get()->getSavedValue<bool>("overlay-visible", false));
 }

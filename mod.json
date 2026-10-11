@@ -17,6 +17,12 @@
 		"info": "Report bugs on GitHub or in the Discord server",
 		"url": "https://github.com/ZhulinskiiDanil/mod-profiler/issues"
 	},
+	"dependencies": {
+		"zhulis.improved-logger": {
+			"version": ">=v1.5.0",
+			"required": false
+		}
+	},
 	"tags": [
 		"developer",
 		"performance",
@@ -76,6 +82,12 @@
 		"symbols": {
 			"name": "Function names",
 			"description": "Names the functions in the table from the mods' PDB files (a mod built on this computer has one where it was built) and from export tables. Off: module+offset",
+			"type": "bool",
+			"default": true
+		},
+		"logger-watch": {
+			"name": "Pinned in Improved Logger",
+			"description": "With <cy>Improved Logger</c>: the fps, the mods with the most own time, the slow frames and the profiler's cost pinned in its console. Its marker key (<cy>Ctrl+Shift+M</c>) also logs the profile since the last marker",
 			"type": "bool",
 			"default": true
 		},

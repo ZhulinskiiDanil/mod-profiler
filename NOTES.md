@@ -44,9 +44,28 @@ Start: **Sun Oct 11 03:33:17 2026** (the first `date` of the run).
 - 04:16 own time: in the menu at 240 fps, between frames 90%, the frame itself about 9%, own time Geode 0.4%,
   DevTools 0.4%, Mega Hack 0.2%. Suspension 25-28 us on average.
 
+- 04:25 the table in the game (backlog 1). Picking a mod shows the hooks its own time is under (backlog 3):
+  DevTools 97% under `CCEGLView::swapBuffers`, where it draws ImGui.
+- 04:30 names with DbgHelp (backlog 2): Geode's functions from `Geode.pdb`, Cocos' from exports. No mod in the
+  game folder ships a PDB, but a mod's DLL has the path of its PDB where it was built: a developer profiling
+  their own mod gets names. TulipHook's bookkeeping in Geode.dll stopped counting as Geode's own time.
+- 04:39 v0.2.0 released (pre-release) after a 110 s check: 108 lines, 27.5 us on average, no gap, no crash.
+  The manager fetched the profiler's releases at 04:22 (its cache has `ZhulinskiiDanil_mod-profiler.json`).
+- 04:47 what the profiler costs (backlog 8), measured at 1, 2 and 5 ms, in the README.
+- 04:55 slow frames (backlog 4). Checked with `MOD_PROFILER_SELFTEST=1`, which makes one 120 ms frame of the
+  profiler's own: "Slow frame: 121 ms, 121 samples: Mod Profiler 99% in selfTestSlowFrame".
+- 05:01 export for speedscope.app (backlog 5): 10 000 samples, 654 functions, every stack down to
+  `RtlUserThreadStart`, the self test's 120 ms in it. Speedscope, not Chrome Trace: speedscope opens Chrome's
+  format too, and its sampled format is exactly what a sampler has.
+
 ## Numbers
 
 | Check | Samples/s | Suspended avg | Max | Scanned/s | Result |
 | --- | --- | --- | --- | --- | --- |
 | v0.1.0, 140 s menu | ~1000 | 26.8 us | 66.6 us avg in the worst second | ~90 | no hang, no crash |
 | learning + 64 frames, 100 s | ~1000 | 27-28 us | 100-450 us single | 0-2 | no hang, no crash |
+| v0.2.0, 110 s menu | 1000 | 27.5 us | 47.6 us avg in the worst second | 0-2 | no hang, no crash |
+| interval 1 ms, 80 s | 1000 | 26.1 us | 844 us single | 27 | stopped 26.1 ms/s, sampler 1.9%, analyzer 0.3% of a core |
+| interval 2 ms, 80 s | 500 | 28.4 us | 649 us single | 8 | stopped 14.2 ms/s, sampler 0.9%, analyzer 0.2% |
+| interval 5 ms, 80 s | 200 | 33.9 us | 335 us single | 3 | stopped 6.8 ms/s, analyzer 0.2% |
+| self test, 100 s | 1000 | 26-27 us | - | - | slow frame of 121 ms found, 98-99% blamed on the profiler's test function |
