@@ -176,6 +176,7 @@ Stage 1 and the whole backlog, then more of my own:
   wrong with sampling turned on late, Geode's bucket possibly missing, the old snapshot freed under the
   lock, the start's memory estimate. Checked again after: sampler test, a level, the cost test (0.512 ms).
 
+- 07:23 v0.6.0 released (pre-release): zones, and the second review's fixes.
 - 07:25 a test for the hook handler rule (review gap): the sampler test builds a handler the way TulipHook
   does (`push rbp; mov rbp, rsp; sub rsp, 0xc0`, unwind info for that, then `sub rsp, 0x40` and a call),
   registers it with `RtlAddFunctionTable`, learns it and walks through it. It found a real bug: 0 of 233
@@ -196,6 +197,8 @@ Stage 1 and the whole backlog, then more of my own:
   table), +7 MB in 16 min. The difference was DbgHelp keeping the PDBs it read for names (Geode.pdb is 90 MB
   on disk, a mod's 56 MB), and the 49 MB step in the long soak was one more mod's PDB loaded. Fixed: PDBs are
   unloaded 30 s after the last name lookup. Checked: the table shown 1.485 GB, hidden 50 s later 1.255 GB.
+- 08:40 zones are frames of their own in exported profiles: `[zone] self test cost` right above its
+  function, 1267 ms of 10 s (0.53 ms a frame for 0.5 ms of work). The start's samples kept their zone too.
 - 08:58 a 17 minute soak, sampling on, table hidden: 1035 lines, no gap, the game's memory 1.1076 to 1.1086
   GB (flat), analyzer 0.28%. It was cut short by my own mistake: the soak with sampling off that I stopped
   with TaskStop left its script running, and that script's last `taskkill` closed the next game. Checked by
@@ -211,9 +214,6 @@ Stage 1 and the whole backlog, then more of my own:
 - 10:32 the last hour: only the version, the changelog, the checks. 10:35 the stage 1 check on v0.8.1: 130 s
   in the main menu, 131 diagnostics lines, no gap, 27.3 us a sample, no crash. 10:40 v0.8.1 released, the
   final one, `.geode` attached by CI.
-- 08:40 zones are frames of their own in exported profiles: `[zone] self test cost` right above its
-  function, 1267 ms of 10 s (0.53 ms a frame for 0.5 ms of work). The start's samples kept their zone too.
-
 ## Numbers
 
 | Check | Samples/s | Suspended avg | Max | Scanned/s | Result |
