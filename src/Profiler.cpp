@@ -40,6 +40,7 @@ namespace
   // A span asked for, under s_mutex: its label
   std::optional<std::string> s_spanLabel;
   std::atomic<bool> s_resetSession{false};
+  std::atomic<bool> s_exiting{false};
   std::string s_scene;
   Baseline s_baseline;
   // Geode's hooks are in place: generated code can be looked up from then on
@@ -308,12 +309,14 @@ namespace
   // the game hangs, the log says where
   constexpr double HANG_SECONDS = 2;
   constexpr double HANG_REPEAT_SECONDS = 5;
-  // A frame that's mostly waiting is the game minimized or a dialog, not a hang
+  // A frame that's mostly waiting is the game minimized or a dialog, not a hang. Unless it waits on a lock
+  // or another thread nearly all the time: then it may be deadlocked
   constexpr double HANG_MIN_WORK = 0.5;
+  constexpr double DEADLOCK_SHARE = 0.8;
 
   void watchForHang(Analyzer& analyzer)
   {
-    if (!analyzer.lastFrameEnd || !sampler::running())
+    if (!analyzer.lastFrameEnd || !sampler::running() || s_exiting.load())
       return;
     auto ticksPerSecond = static_cast<double>(sampler::ticksPerSecond());
     auto now = sampler::now();
@@ -333,8 +336,28 @@ namespace
     if (samples.empty())
       return;
     auto spike = makeSpike({analyzer.lastFrameEnd, now}, ticksPerSecond / 1000, samples, verdicts, 1);
+    auto const& last = *samples.back();
+    auto stackOf = [&](Sample const& sample)
+    {
+      std::string stack;
+      for (int i = 0; i < sample.depth && i < MAX_FRAMES; i++)
+        stack += (i ? " < " : "") + nameOf(analyzer, sample.frames[i]);
+      return stack;
+    };
+
     if (spike.idlePercent > 100 * (1 - HANG_MIN_WORK))
+    {
+      auto locked = lockWaitShare(samples, analyzer.attribution);
+      if (locked < DEADLOCK_SHARE)
+        return;
+      analyzer.lastHangReport = now;
+      auto mod = waitingMod(samples, *analyzer.map, analyzer.attribution);
+      log::warn("One frame has taken {:.1f} s so far, waiting on a lock or another thread {:.0f}% of it (the game may be deadlocked){}",
+                spike.millis / 1000, locked * 100,
+                mod < 0 ? std::string() : ", in a call of " + analyzer.buckets[static_cast<uint32_t>(mod)].name);
+      log::warn("Where it waits: {}", stackOf(last));
       return;
+    }
     analyzer.lastHangReport = now;
 
     auto who = spike.culprit < 0 ? fmt::format("no mod (the game {:.0f}%)", spike.gamePercent)
@@ -345,15 +368,14 @@ namespace
       who += fmt::format(" under its hook of {}", nameOf(analyzer, spike.hooks.front().address));
     log::warn("One frame has taken {:.1f} s so far (the game may hang): {}", spike.millis / 1000, who);
     // The newest sample says where the thread is right now
-    auto const& last = *samples.back();
-    std::string stack;
-    for (int i = 0; i < last.depth && i < MAX_FRAMES; i++)
-      stack += (i ? " < " : "") + nameOf(analyzer, last.frames[i]);
-    log::warn("Where it is now: {}", stack);
+    log::warn("Where it is now: {}", stackOf(last));
   }
 
   void findSlowFrames(Analyzer& analyzer)
   {
+    // The game closing is one long frame of cleaning up, not a slow one
+    if (s_exiting.load())
+      return;
     auto ticksPerMilli = sampler::ticksPerSecond() / 1000.0;
     auto threshold = static_cast<int64_t>(s_spikeMillis.load() * ticksPerMilli);
     for (auto const& frame : analyzer.clock.slowFrames(threshold))
@@ -371,6 +393,9 @@ namespace
       if (samples.empty())
         continue;
       auto spike = makeSpike(frame, ticksPerMilli, samples, verdicts, 3);
+      // Nearly all waiting, and not on a lock or another thread: the game minimized or paused, not slow
+      if (spike.idlePercent >= 90 && lockWaitShare(samples, analyzer.attribution) < 0.5)
+        continue;
 
       profiler::SlowFrame slow{
           .when = localTime(),
@@ -385,7 +410,16 @@ namespace
         slow.function = nameOf(analyzer, spike.functions.front().address);
       if (!spike.hooks.empty())
         slow.hook = nameOf(analyzer, spike.hooks.front().address);
-      for (auto const& stack : spike.stacks)
+      auto stacks = spike.stacks;
+      // Mostly waiting: whose call it waited in, and where
+      if (spike.culprit < 0 && spike.idlePercent >= 50)
+      {
+        if (auto mod = waitingMod(samples, *analyzer.map, analyzer.attribution); mod >= 0)
+          slow.waitingIn = analyzer.buckets[static_cast<uint32_t>(mod)].name;
+        // A waiting sample from the middle of the frame: where it waited
+        stacks.push_back(*samples[samples.size() / 2]);
+      }
+      for (auto const& stack : stacks)
       {
         std::string text;
         for (int i = 0; i < stack.depth && i < MAX_FRAMES; i++)
@@ -400,8 +434,8 @@ namespace
           who += fmt::format(" in {}", slow.function);
         if (!slow.hook.empty())
           who += fmt::format(" under its hook of {}", slow.hook);
-        log::info("Slow frame: {:.0f} ms, {} samples: {}, the game {:.0f}%, waiting {:.0f}%", slow.millis, spike.samples, who,
-                  slow.gamePercent, slow.idlePercent);
+        log::info("Slow frame: {:.0f} ms, {} samples: {}, the game {:.0f}%, waiting {:.0f}%{}", slow.millis, spike.samples, who,
+                  slow.gamePercent, slow.idlePercent, slow.waitingIn.empty() ? "" : " in a call of " + slow.waitingIn);
         if (!slow.stacks.empty())
           log::info("Slow frame stack: {}", slow.stacks.front());
       }
@@ -469,6 +503,7 @@ namespace
         analyzer.hookNames[hook.target] = hook.name;
     }
     attribution.waits = modules::waitFunctions();
+    attribution.lockWaits = modules::lockWaitFunctions();
     attribution.loader = analyzer.buckets.find("geode.loader");
     attribution.finish();
     analyzer.attribution = std::move(attribution);
@@ -791,6 +826,8 @@ void profiler::setLoop(uintptr_t loop, std::vector<uintptr_t> frame)
   s_frameFunctions = std::move(frame);
   s_hooksVersion++;
 }
+
+void profiler::exiting() { s_exiting = true; }
 
 void profiler::setScene(std::string name)
 {

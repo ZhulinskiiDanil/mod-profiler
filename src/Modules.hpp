@@ -47,4 +47,6 @@ namespace modules
 
   // The system call stubs a waiting thread sits in (sleeping, waiting for an event, a message, vsync)
   std::vector<std::pair<uintptr_t, uintptr_t>> waitFunctions();
+  // Of those, the ones that wait on a lock or an object (another thread), not for time or a message
+  std::vector<std::pair<uintptr_t, uintptr_t>> lockWaitFunctions();
 } // namespace modules

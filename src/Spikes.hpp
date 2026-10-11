@@ -58,6 +58,14 @@ struct Spike
 // A mod needs this much of a spike's samples to be its culprit
 inline constexpr double CULPRIT_SHARE = 0.2;
 
+// The share of the samples (0 to 1) whose thread was in a wait for a lock or an object
+double lockWaitShare(std::vector<Sample const*> const& samples, Attribution const& attribution);
+
+// The innermost mod on a sample's stack, or -1: whose call a thread waiting on a lock is in
+int innermostMod(Sample const& sample, ModuleMap const& map);
+// Of the samples waiting on a lock or another thread, the innermost mod most of them are in a call of, or -1
+int waitingMod(std::vector<Sample const*> const& samples, ModuleMap const& map, Attribution const& attribution);
+
 // The spike made of these samples (those of one frame) and their verdicts
 Spike makeSpike(FrameClock::Frame frame, double ticksPerMilli, std::vector<Sample const*> const& samples,
                 std::vector<Verdict> const& verdicts, size_t stackCount);

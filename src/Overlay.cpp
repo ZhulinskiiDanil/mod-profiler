@@ -350,8 +350,9 @@ namespace
       for (size_t i = frames.size() - shown; i < frames.size(); i++)
       {
         auto const& frame = frames[i];
-        auto who = frame.culprit.empty() ? fmt::format("the game {:.0f}%", frame.gamePercent)
-                                         : fmt::format("{} {:.0f}%", fit(frame.culprit, 22), frame.culpritPercent);
+        auto who = !frame.culprit.empty()   ? fmt::format("{} {:.0f}%", fit(frame.culprit, 22), frame.culpritPercent)
+                   : !frame.waitingIn.empty() ? fmt::format("waiting {:.0f}% in {}", frame.idlePercent, fit(frame.waitingIn, 22))
+                                              : fmt::format("the game {:.0f}%", frame.gamePercent);
         if (!frame.function.empty())
           who += "  " + fit(shortName(frame.function), 40);
         text += fmt::format("\n  {}  {:>5.0f} ms  {}", frame.when, frame.millis, who);

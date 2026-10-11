@@ -118,11 +118,21 @@ namespace
     log::info("Self test: a 4.5 s frame made");
   }
 
+  // A frame that waits 4 seconds on an event nobody sets: the deadlock report has to come during it
+  void __declspec(noinline) selfTestDeadlock()
+  {
+    auto event = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    WaitForSingleObject(event, 4000);
+    CloseHandle(event);
+    log::info("Self test: a 4 s wait made");
+  }
+
   class SelfTest : public CCObject
   {
   public:
     void run(float) { selfTestSlowFrame(); }
     void hang(float) { selfTestHang(); }
+    void deadlock(float) { selfTestDeadlock(); }
     void play(float)
     {
       auto level = GameLevelManager::get()->getMainLevel(1, false);
@@ -191,10 +201,12 @@ $on_game(Loaded)
   profiler::hooksReady();
   CCDirector::get()->getScheduler()->scheduleUpdateForTarget(new FrameCounter(), 0, false);
 
-  char value[8] = {};
+  char value[32] = {};
   auto selfTest = GetEnvironmentVariableA("MOD_PROFILER_SELFTEST", value, sizeof(value)) ? std::string(value) : std::string();
   if (selfTest == "hang")
     CCDirector::get()->getScheduler()->scheduleSelector(schedule_selector(SelfTest::hang), new SelfTest(), 0, 0, 30, false);
+  if (selfTest == "deadlock")
+    CCDirector::get()->getScheduler()->scheduleSelector(schedule_selector(SelfTest::deadlock), new SelfTest(), 0, 0, 30, false);
   if (selfTest == "1" || selfTest == "play")
   {
     // Then the profile with it in, saved
@@ -217,6 +229,7 @@ $on_game(Loaded)
 // The whole session in the log when the game closes, for reading after playing
 $on_game(Exiting)
 {
+  profiler::exiting();
   auto snapshot = profiler::snapshot();
   if (snapshot->session.profile.samples() > 0)
     log::info("The session: {}", summaryLine(snapshot->session, snapshot->buckets, 8));

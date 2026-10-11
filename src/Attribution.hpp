@@ -44,6 +44,9 @@ struct Attribution
   HookIndex hooks;
   // Where the thread waits in the kernel: the system call stubs of the wait functions, sorted
   std::vector<std::pair<uintptr_t, uintptr_t>> waits;
+  // Those of them a thread waits on a lock or an object in, not for time or a window message: a
+  // thread there for seconds may be deadlocked
+  std::vector<std::pair<uintptr_t, uintptr_t>> lockWaits;
   // The game's loop (CCApplication::run), and what it calls that is part of a frame
   // (CCDirector::mainLoop, CCEGLView::pollEvents). `finish` adds the detours of their hooks
   std::vector<uintptr_t> loop;
@@ -54,6 +57,7 @@ struct Attribution
 
   void finish();
   bool isWait(uintptr_t address) const;
+  bool isLockWait(uintptr_t address) const;
 };
 
 struct Verdict

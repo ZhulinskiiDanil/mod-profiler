@@ -102,6 +102,10 @@ static void testWaits()
   CHECK(!attribution.isWait(0x320));
   CHECK(!attribution.isWait(0x200));
   CHECK(!attribution.isWait(0x50));
+  attribution.lockWaits = {{0x300, 0x320}};
+  attribution.finish();
+  CHECK(attribution.isLockWait(0x310));
+  CHECK(!attribution.isLockWait(0x110));
 }
 
 static void testFunctionStart()

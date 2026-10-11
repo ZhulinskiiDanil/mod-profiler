@@ -46,6 +46,8 @@ namespace profiler
   void frame();
   // The game went to another scene, named by its layer ("MenuLayer", "PlayLayer")
   void setScene(std::string name);
+  // The game is closing: no more slow frames or hangs, closing is one long frame
+  void exiting();
   // The mods are loaded and have made their hooks: generated code can be looked up
   void hooksReady();
   // A summary of the time since the last call (or the start) goes to the log at the analyzer's next
@@ -74,6 +76,8 @@ namespace profiler
     double culpritPercent = 0;
     double gamePercent = 0;
     double idlePercent = 0;
+    // A frame that mostly waited: the innermost mod it waited in a call of, or empty
+    std::string waitingIn;
     // The culprit's busiest function and hook, and a few of its stacks, named
     std::string function;
     std::string hook;

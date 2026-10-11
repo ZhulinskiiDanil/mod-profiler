@@ -136,6 +136,40 @@ static void testEmpty()
   CHECK(near(spike.millis, 80));
 }
 
+static void testLockWaits()
+{
+  std::vector<MappedModule> modules = {
+      {.base = 0x1000, .size = 0x1000, .bucket = bucket::GAME},
+      {.base = 0x3000, .size = 0x1000, .bucket = bucket::FIRST_MOD},
+      {.base = 0x5000, .size = 0x1000, .bucket = bucket::OTHER},
+  };
+  ModuleMap map(std::move(modules), {});
+  Attribution attribution;
+  attribution.waits = {{0x5000, 0x5040}};
+  attribution.lockWaits = {{0x5000, 0x5020}};
+  attribution.finish();
+  Sample locked;
+  locked.depth = 3;
+  locked.frames[0] = 0x5010;
+  locked.frames[1] = 0x3010;
+  locked.frames[2] = 0x1010;
+  Sample sleeping = locked;
+  sleeping.frames[0] = 0x5030;
+  std::vector<Sample const*> samples = {&locked, &locked, &locked, &sleeping};
+  CHECK(lockWaitShare(samples, attribution) == 0.75);
+  CHECK(lockWaitShare({}, attribution) == 0);
+  CHECK(innermostMod(locked, map) == static_cast<int>(bucket::FIRST_MOD));
+  Sample game;
+  game.depth = 1;
+  game.frames[0] = 0x1010;
+  CHECK(innermostMod(game, map) == -1);
+  // The mod most of the waiting samples are in, not the last sample's
+  std::vector<Sample const*> mixed = {&locked, &locked, &game, &sleeping};
+  CHECK(waitingMod(mixed, map, attribution) == static_cast<int>(bucket::FIRST_MOD));
+  std::vector<Sample const*> none = {&game, &sleeping};
+  CHECK(waitingMod(none, map, attribution) == -1);
+}
+
 int main()
 {
   testSlowFrames();
@@ -145,5 +179,6 @@ int main()
   testNoCulprit();
   testBetweenFramesIsIdle();
   testEmpty();
+  testLockWaits();
   return finish("spikes");
 }

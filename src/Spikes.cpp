@@ -17,6 +17,45 @@ std::vector<FrameClock::Frame> FrameClock::slowFrames(int64_t threshold)
   return slow;
 }
 
+double lockWaitShare(std::vector<Sample const*> const& samples, Attribution const& attribution)
+{
+  if (samples.empty())
+    return 0;
+  size_t locked = 0;
+  for (auto sample : samples)
+    if (sample->depth > 0 && attribution.isLockWait(sample->frames[0]))
+      locked++;
+  return static_cast<double>(locked) / samples.size();
+}
+
+int innermostMod(Sample const& sample, ModuleMap const& map)
+{
+  for (int i = 0; i < sample.depth && i < MAX_FRAMES; i++)
+  {
+    auto bucket = map.bucketOf(sample.frames[i]);
+    if (bucket >= bucket::FIRST_MOD)
+      return static_cast<int>(bucket);
+  }
+  return -1;
+}
+
+int waitingMod(std::vector<Sample const*> const& samples, ModuleMap const& map, Attribution const& attribution)
+{
+  std::map<int, size_t> counts;
+  for (auto sample : samples)
+    if (sample->depth > 0 && attribution.isLockWait(sample->frames[0]))
+      counts[innermostMod(*sample, map)]++;
+  int best = -1;
+  size_t most = 0;
+  for (auto const& [mod, count] : counts)
+    if (mod >= 0 && count > most)
+    {
+      best = mod;
+      most = count;
+    }
+  return best;
+}
+
 Spike makeSpike(FrameClock::Frame frame, double ticksPerMilli, std::vector<Sample const*> const& samples,
                 std::vector<Verdict> const& verdicts, size_t stackCount)
 {

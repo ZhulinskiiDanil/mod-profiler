@@ -245,10 +245,42 @@ std::unique_ptr<ModuleMap> modules::build(std::vector<void*> const& handles, std
   return std::make_unique<ModuleMap>(std::move(mapped), std::move(code));
 }
 
-std::vector<std::pair<uintptr_t, uintptr_t>> modules::waitFunctions()
+namespace
 {
   // A stub is a few instructions around `syscall`: the thread is right after it while in the kernel
   constexpr uintptr_t STUB_SIZE = 0x20;
+
+  template <size_t N>
+  std::vector<std::pair<uintptr_t, uintptr_t>> stubs(std::pair<wchar_t const*, char const*> const (&functions)[N])
+  {
+    std::vector<std::pair<uintptr_t, uintptr_t>> ranges;
+    for (auto [library, name] : functions)
+    {
+      auto module = GetModuleHandleW(library);
+      if (!module)
+        continue;
+      if (auto address = reinterpret_cast<uintptr_t>(GetProcAddress(module, name)))
+        ranges.push_back({address, address + STUB_SIZE});
+    }
+    return ranges;
+  }
+} // namespace
+
+std::vector<std::pair<uintptr_t, uintptr_t>> modules::lockWaitFunctions()
+{
+  // A critical section, an SRW lock, std::mutex, WaitForSingleObject on a thread or an event
+  static constexpr std::pair<wchar_t const*, char const*> functions[] = {
+      {L"ntdll.dll", "NtWaitForSingleObject"},
+      {L"ntdll.dll", "NtWaitForMultipleObjects"},
+      {L"ntdll.dll", "NtWaitForAlertByThreadId"},
+      {L"ntdll.dll", "NtWaitForKeyedEvent"},
+      {L"ntdll.dll", "NtSignalAndWaitForSingleObject"},
+  };
+  return stubs(functions);
+}
+
+std::vector<std::pair<uintptr_t, uintptr_t>> modules::waitFunctions()
+{
   static constexpr std::pair<wchar_t const*, char const*> functions[] = {
       {L"ntdll.dll", "NtWaitForSingleObject"},
       {L"ntdll.dll", "NtWaitForMultipleObjects"},
@@ -265,16 +297,7 @@ std::vector<std::pair<uintptr_t, uintptr_t>> modules::waitFunctions()
       {L"win32u.dll", "NtGdiDdDDIWaitForVerticalBlankEvent2"},
       {L"win32u.dll", "NtGdiDdDDIWaitForSynchronizationObjectFromCpu"},
   };
-  std::vector<std::pair<uintptr_t, uintptr_t>> ranges;
-  for (auto [library, name] : functions)
-  {
-    auto module = GetModuleHandleW(library);
-    if (!module)
-      continue;
-    if (auto address = reinterpret_cast<uintptr_t>(GetProcAddress(module, name)))
-      ranges.push_back({address, address + STUB_SIZE});
-  }
-  return ranges;
+  return stubs(functions);
 }
 
 void modules::release(ModuleMap const& map)

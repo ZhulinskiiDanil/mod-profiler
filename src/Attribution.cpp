@@ -54,6 +54,7 @@ void Attribution::finish()
 {
   hooks.finish();
   std::sort(waits.begin(), waits.end());
+  std::sort(lockWaits.begin(), lockWaits.end());
   // A mod's detour of a function counts as the function
   for (auto* functions : {&loop, &frame})
   {
@@ -66,11 +67,18 @@ void Attribution::finish()
   }
 }
 
-bool Attribution::isWait(uintptr_t address) const
+namespace
 {
-  auto after = std::upper_bound(waits.begin(), waits.end(), std::pair<uintptr_t, uintptr_t>{address, UINTPTR_MAX});
-  return after != waits.begin() && address < std::prev(after)->second;
-}
+  bool inRanges(std::vector<std::pair<uintptr_t, uintptr_t>> const& ranges, uintptr_t address)
+  {
+    auto after = std::upper_bound(ranges.begin(), ranges.end(), std::pair<uintptr_t, uintptr_t>{address, UINTPTR_MAX});
+    return after != ranges.begin() && address < std::prev(after)->second;
+  }
+} // namespace
+
+bool Attribution::isWait(uintptr_t address) const { return inRanges(waits, address); }
+
+bool Attribution::isLockWait(uintptr_t address) const { return inRanges(lockWaits, address); }
 
 // ! --- One sample --- !
 
