@@ -226,6 +226,12 @@ Stage 1 and the whole backlog, then more of my own:
 | minimized 20 s, then closed | - | - | - | - | no hang, no slow frame reported |
 | cost self test (0.500 ms a frame) | 1000 | - | - | - | measured 0.514 ms a frame (30 s mean, 0.49-0.57 a second) |
 | v0.5.0, start + 20 s menu + 100 s level | 999 | 29.3 us | 40.4 us avg in the worst second | 20 | no gap, no crash |
+| soak, 40 min in a level, table shown (v0.6.0) | 999 | 29.6 us | 52.7 us avg in the worst second | 1.4 | 2466 lines, no gap, no crash; memory +74 MB (PDBs) |
+| soak, 20 min, sampling off (comparison) | 0 | - | - | - | memory 1.145 GB, +7 MB in 16 min: the game's own |
+| table shown, then hidden 50 s (v0.8.0 code) | 1000 | - | - | - | 1.485 GB, then 1.255 GB: PDBs let go |
+| soak, 17 min, sampling on, table hidden | 999 | 29.1 us | 41.2 us avg in the worst second | 2.7 | 1035 lines, no gap; memory flat (+1 MB); analyzer 0.28% |
+| soak, 40 min in a level, table shown (v0.8.0) | 999 | 29.1 us | 43.2 us avg in the worst second | 1.4 | 2466 lines, no gap, no crash; memory +72 MB: one PDB (49 MB) and the game's ~0.5 MB a minute |
+| rebuild while the game runs | - | - | - | - | `geode build` links (was LNK1201) |
 | sampler test (Windows, MSVC and clang) | 1000 | 22-26 us | - | - | 490-499 of 490-499 samples walk the chain, 292-297 of 292-297 deep ones cut at 64 |
 
 ## What didn't work, or only partly
