@@ -21,13 +21,19 @@
 static std::atomic<int> s_phase{0};
 static volatile uint64_t s_sink = 0;
 
-// The innermost: a loop that calls nothing, so the thread is always right in it
+// A leaf without a frame: an optimizing compiler gives it no function table entry
+extern "C" __declspec(noinline) void spin()
+{
+  for (int i = 0; i < 1000; i++)
+    s_sink = s_sink + i;
+}
+
+// The innermost of the chain: the thread is in it or in the leaf it calls
 extern "C" __declspec(noinline) void level3()
 {
   int phase = s_phase.load();
   while (s_phase.load() == phase)
-    for (int i = 0; i < 1000; i++)
-      s_sink = s_sink + i;
+    spin();
 }
 
 extern "C" __declspec(noinline) void level2()
