@@ -88,6 +88,8 @@ static void testHookIndex()
   CHECK(!index.passesOn(4, 0x6100));
   CHECK(index.passesOn(5, 0x5000));
   CHECK(!index.passesOn(6, 0x1000));
+  CHECK(index.targetOf(0x6100) == 0x2000);
+  CHECK(index.targetOf(0x7000) == 0);
 }
 
 static void testWaits()
@@ -130,6 +132,21 @@ static void testOwnWork()
   Process process;
   auto result = verdict(process, stack({process.C(0x150), process.MA(0x250), process.MA(0x150), process.H(0x10), process.G(0x250)}));
   CHECK(result.owner == static_cast<int>(process.A));
+}
+
+static void testWhere()
+{
+  // A's own function at 0x200, called from A's detour of the game's 0x100
+  Process process;
+  auto result = verdict(process, stack({process.C(0x150), process.MA(0x250), process.MA(0x150), process.H(0x10), process.G(0x250)}));
+  CHECK(result.function == process.MA(0x200));
+  CHECK(result.hook == process.G(0x100));
+  // Not under a detour: no hook
+  auto plain = verdict(process, stack({process.MA(0x250), process.C(0x250)}));
+  CHECK(plain.function == process.MA(0x200));
+  CHECK(plain.hook == 0);
+  // Before every function: the address itself
+  CHECK(verdict(process, stack({process.MA(0x50), process.C(0x250)})).function == process.MA(0x50));
 }
 
 static void testChainOfDetours()
@@ -228,6 +245,7 @@ int main()
   testFunctionStart();
   testPassingOnToTheOriginal();
   testOwnWork();
+  testWhere();
   testChainOfDetours();
   testInnermostWins();
   testThreadInTheMod();

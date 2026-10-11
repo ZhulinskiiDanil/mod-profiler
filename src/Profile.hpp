@@ -6,7 +6,9 @@
 #include "Sample.hpp"
 
 #include <cstdint>
+#include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 struct BucketTime
@@ -35,6 +37,11 @@ public:
   std::vector<BucketTime> const& buckets() const { return m_buckets; }
   BucketTime at(uint32_t bucket) const { return bucket < m_buckets.size() ? m_buckets[bucket] : BucketTime{}; }
 
+  // Own samples by (mod, function start) and by (mod, hooked function)
+  using Places = std::map<std::pair<uint32_t, uintptr_t>, uint64_t>;
+  Places const& functions() const { return m_functions; }
+  Places const& hooks() const { return m_hooks; }
+
 private:
   BucketTime& grow(uint32_t bucket);
 
@@ -44,7 +51,18 @@ private:
   uint64_t m_samples = 0;
   uint64_t m_idle = 0;
   uint64_t m_between = 0;
+  Places m_functions;
+  Places m_hooks;
 };
+
+struct Place
+{
+  uintptr_t address = 0;
+  uint64_t samples = 0;
+};
+
+// The places of one mod with the most samples, most first
+std::vector<Place> topPlaces(Profile::Places const& places, uint32_t bucket, size_t limit);
 
 // How the sampler itself did
 struct SamplerStats

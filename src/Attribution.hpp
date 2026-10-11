@@ -29,6 +29,8 @@ public:
   bool passesOn(uint32_t owner, uintptr_t callee) const;
   // The detours of every hook of the function at `target`
   std::vector<uintptr_t> detoursOf(uintptr_t target) const;
+  // The function a detour hooks, or 0
+  uintptr_t targetOf(uintptr_t detour) const;
 
 private:
   // (target, owner) and (detour, target), sorted
@@ -57,6 +59,10 @@ struct Verdict
   bool between = false;
   // The mod the sample is the own time of, or -1
   int owner = -1;
+  // Where in the mod: the start of the function its frame is in (the address itself without an entry),
+  // and the function hooked by the mod's detour the frame is under, or 0
+  uintptr_t function = 0;
+  uintptr_t hook = 0;
 };
 
 Verdict attribute(Sample const& sample, ModuleMap const& map, Attribution const& attribution);

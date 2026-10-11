@@ -7,6 +7,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <deque>
 #include <mutex>
 #include <thread>
 #include <unordered_set>
@@ -61,7 +62,31 @@ namespace
     std::vector<uintptr_t> unknown;
     Attribution attribution;
     uint64_t hooksVersion = 0;
+    std::unordered_map<uintptr_t, std::string> hookNames;
+    std::deque<Window> recent;
   };
+
+  // The busiest places of every mod in a window, named: hooks by Geode, functions as module+offset
+  std::unordered_map<uintptr_t, std::string> nameTopPlaces(Analyzer& analyzer, Window const& window)
+  {
+    constexpr size_t PER_MOD = 8;
+    std::unordered_map<uintptr_t, std::string> names;
+    auto const& buckets = window.profile.buckets();
+    for (uint32_t bucket = bucket::FIRST_MOD; bucket < buckets.size(); bucket++)
+    {
+      if (buckets[bucket].own == 0)
+        continue;
+      for (auto const& place : topPlaces(window.profile.hooks(), bucket, PER_MOD))
+      {
+        auto name = analyzer.hookNames.find(place.address);
+        names[place.address] = name != analyzer.hookNames.end() ? name->second : describeAddress(place.address, *analyzer.map);
+      }
+      for (auto const& place : topPlaces(window.profile.functions(), bucket, PER_MOD))
+        if (!names.contains(place.address))
+          names[place.address] = describeAddress(place.address, *analyzer.map);
+    }
+    return names;
+  }
 
   // The hooks and the wait functions, again when the hooks list changed
   void refreshAttribution(Analyzer& analyzer)
@@ -80,8 +105,13 @@ namespace
         attribution.frame = s_frameFunctions;
       }
     }
+    analyzer.hookNames.clear();
     for (auto const& hook : hooks)
+    {
       attribution.hooks.add(analyzer.buckets.index(hook.mod, ""), hook.target, hook.detour);
+      if (!hook.name.empty())
+        analyzer.hookNames[hook.target] = hook.name;
+    }
     attribution.waits = modules::waitFunctions();
     attribution.finish();
     analyzer.attribution = std::move(attribution);
@@ -209,16 +239,28 @@ namespace
       if (s_logDiagnostics.load(std::memory_order_relaxed) && (sampler::running() || window.stats.samples > 0))
         log::info("{}", diagnosticsLine(window, analyzer.buckets, 5));
 
-      analyzer.session.profile.merge(window.profile);
-      analyzer.session.stats.merge(window.stats);
-      analyzer.session.seconds += window.seconds;
-      analyzer.session.frames += window.frames;
+      auto merge = [](Window& into, Window const& from)
+      {
+        into.profile.merge(from.profile);
+        into.stats.merge(from.stats);
+        into.seconds += from.seconds;
+        into.frames += from.frames;
+      };
+      merge(analyzer.session, window);
+      analyzer.recent.push_back(window);
+      while (analyzer.recent.size() > profiler::RECENT_SECONDS)
+        analyzer.recent.pop_front();
+      Window recent;
+      for (auto const& second : analyzer.recent)
+        merge(recent, second);
+      auto names = nameTopPlaces(analyzer, recent);
       {
         std::lock_guard lock(s_mutex);
         s_snapshot.last = std::move(window);
+        s_snapshot.recent = std::move(recent);
         s_snapshot.session = analyzer.session;
         s_snapshot.buckets = analyzer.buckets;
-        s_snapshot.modules = analyzer.map->modules();
+        s_snapshot.names = std::move(names);
       }
 
       freeRetired(analyzer, !sampler::alive());

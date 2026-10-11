@@ -110,6 +110,21 @@ static void testMerge()
   CHECK(a.at(A).inclusive == 0);
 }
 
+static void testPlaces()
+{
+  Profile::Places places;
+  places[{4, 0x100}] = 3;
+  places[{4, 0x200}] = 7;
+  places[{5, 0x100}] = 9;
+  places[{3, 0x100}] = 9;
+  auto top = topPlaces(places, 4, 5);
+  CHECK(top.size() == 2);
+  CHECK(top[0].address == 0x200 && top[0].samples == 7);
+  CHECK(top[1].address == 0x100);
+  CHECK(topPlaces(places, 4, 1).size() == 1);
+  CHECK(topPlaces(places, 9, 5).empty());
+}
+
 // ! --- Shares --- !
 
 static Window sampleWindow()
@@ -259,6 +274,7 @@ int main()
   testUnknownAddressesAreOther();
   testEmptySamplesAreSkipped();
   testMerge();
+  testPlaces();
   testShares();
   testSharesWithoutFrames();
   testTopMods();

@@ -23,6 +23,13 @@
 		"utility"
 	],
 	"settings": {
+		"overlay-key": {
+			"name": "Show the table",
+			"description": "Shows and hides the table of mods in the game: each mod's own time a frame, its share, and for the mod you click, the hooks and functions it spends it in",
+			"type": "keybind",
+			"default": "Ctrl+Shift+P",
+			"category": "universal"
+		},
 		"enabled": {
 			"name": "Sampling",
 			"description": "Looks at the game's main thread about once a millisecond to see which mod's code it is in. Off: the profiler does nothing",

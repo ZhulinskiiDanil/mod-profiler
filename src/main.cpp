@@ -1,3 +1,4 @@
+#include "Overlay.hpp"
 #include "Profiler.hpp"
 
 #include <Geode/Geode.hpp>
@@ -48,6 +49,7 @@ namespace
             .mod = std::string(mod->getID()),
             .target = hook->getAddress(),
             .detour = static_cast<uintptr_t>(std::strtoull(detour.c_str(), nullptr, 10)),
+            .name = std::string(hook->getDisplayName()),
         });
       }
     }
@@ -108,6 +110,11 @@ $on_mod(Loaded)
 
   listenForAllSettingChanges([](std::string_view, std::shared_ptr<SettingV3>)
                              { profiler::setOptions(readOptions()); });
+
+  listenForKeybindSettingPresses("overlay-key", [](Keybind const&, bool down, bool repeat, double)
+                                 {
+                                   if (down && !repeat)
+                                     overlay::toggle(); });
 }
 
 $on_game(Loaded)
@@ -118,4 +125,7 @@ $on_game(Loaded)
   findLoop();
   profiler::hooksReady();
   CCDirector::get()->getScheduler()->scheduleUpdateForTarget(new FrameCounter(), 0, false);
+
+  overlay::setup();
+  overlay::setVisible(Mod::get()->getSavedValue<bool>("overlay-visible", false));
 }

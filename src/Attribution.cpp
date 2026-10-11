@@ -42,6 +42,12 @@ std::vector<uintptr_t> HookIndex::detoursOf(uintptr_t target) const
   return detours;
 }
 
+uintptr_t HookIndex::targetOf(uintptr_t detour) const
+{
+  auto found = std::lower_bound(m_detours.begin(), m_detours.end(), std::pair<uintptr_t, uintptr_t>{detour, 0});
+  return found != m_detours.end() && found->first == detour ? found->second : 0;
+}
+
 // ! --- Waits --- !
 
 void Attribution::finish()
@@ -136,6 +142,17 @@ Verdict attribute(Sample const& sample, ModuleMap const& map, Attribution const&
     if (owner < bucket::FIRST_MOD || passesOn(sample, map, attribution, i, owner))
       continue;
     verdict.owner = static_cast<int>(owner);
+    auto start = map.functionStart(lookupAddress(sample, i));
+    verdict.function = start ? start : sample.frames[i];
+
+    // The hook it's working for: the nearest of the mod's detours from here out
+    for (int frame = i; frame < sample.depth && frame < MAX_FRAMES && !verdict.hook; frame++)
+    {
+      if (map.bucketOf(sample.frames[frame]) != owner)
+        continue;
+      if (auto function = map.functionStart(lookupAddress(sample, frame)))
+        verdict.hook = attribution.hooks.targetOf(function);
+    }
     break;
   }
   return verdict;

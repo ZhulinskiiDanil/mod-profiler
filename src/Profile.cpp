@@ -30,7 +30,13 @@ void Profile::add(Sample const& sample, ModuleMap const& map, Attribution const*
     if (verdict.between)
       m_between++;
     if (verdict.owner >= 0)
-      grow(static_cast<uint32_t>(verdict.owner)).own++;
+    {
+      auto owner = static_cast<uint32_t>(verdict.owner);
+      grow(owner).own++;
+      m_functions[{owner, verdict.function}]++;
+      if (verdict.hook)
+        m_hooks[{owner, verdict.hook}]++;
+    }
   }
 
   grow(map.bucketOf(sample.frames[0])).self++;
@@ -57,6 +63,10 @@ void Profile::merge(Profile const& other)
   m_samples += other.m_samples;
   m_idle += other.m_idle;
   m_between += other.m_between;
+  for (auto const& [place, samples] : other.m_functions)
+    m_functions[place] += samples;
+  for (auto const& [place, samples] : other.m_hooks)
+    m_hooks[place] += samples;
   // Sample numbers go on from the merged count: older marks are lower, so nothing is skipped later
   std::fill(m_seen.begin(), m_seen.end(), 0);
 }
@@ -68,6 +78,21 @@ void Profile::clear()
   m_samples = 0;
   m_idle = 0;
   m_between = 0;
+  m_functions.clear();
+  m_hooks.clear();
+}
+
+std::vector<Place> topPlaces(Profile::Places const& places, uint32_t bucket, size_t limit)
+{
+  std::vector<Place> result;
+  // The map is sorted by bucket first: the mod's places are one run of it
+  for (auto it = places.lower_bound({bucket, 0}); it != places.end() && it->first.first == bucket; it++)
+    result.push_back({it->first.second, it->second});
+  std::stable_sort(result.begin(), result.end(), [](Place const& a, Place const& b)
+                   { return a.samples > b.samples; });
+  if (result.size() > limit)
+    result.resize(limit);
+  return result;
 }
 
 void SamplerStats::add(Sample const& sample, double microsPerTick)

@@ -5,6 +5,8 @@
 #include "Modules.hpp"
 #include "Profile.hpp"
 
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace profiler
@@ -27,6 +29,8 @@ namespace profiler
     std::string mod;
     uintptr_t target = 0;
     uintptr_t detour = 0;
+    // The hooked function, like "MenuLayer::init"
+    std::string name;
   };
   void setHooks(std::vector<HookInfo> hooks);
   // The game's loop and the functions of it that make a frame, for telling the time between frames
@@ -36,13 +40,18 @@ namespace profiler
   // The mods are loaded and have made their hooks: generated code can be looked up
   void hooksReady();
 
+  // How many seconds the recent window has
+  inline constexpr int RECENT_SECONDS = 5;
+
   struct Snapshot
   {
-    // The last full second, and everything since the start (or the last reset)
+    // The last full second, the last few, and everything since the start
     Window last;
+    Window recent;
     Window session;
     Buckets buckets;
-    std::vector<MappedModule> modules;
+    // Names for the busiest places of the recent window: hooked functions and mods' functions
+    std::unordered_map<uintptr_t, std::string> names;
   };
   Snapshot snapshot();
 } // namespace profiler
