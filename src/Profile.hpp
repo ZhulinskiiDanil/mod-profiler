@@ -138,5 +138,8 @@ std::string describeStack(Sample const& sample, ModuleMap const& map);
 // A window in a few words, for a person: how long, fps, the frame's share, the mods with the most own time
 std::string summaryLine(Window const& window, Buckets const& buckets, size_t topCount);
 
+// The game's start in a few words: how long, and the mods with the most own time in seconds
+std::string startupLine(Window const& window, Buckets const& buckets, size_t topCount);
+
 // The once-a-second line of the self-diagnostics
 std::string diagnosticsLine(Window const& window, Buckets const& buckets, size_t topCount);

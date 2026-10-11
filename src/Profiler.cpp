@@ -84,7 +84,36 @@ namespace
     // Since the last marker
     Window span;
     size_t spanSlowFrames = 0;
+
+    // The game's start: its samples are kept until Geode's hooks are known (the game is loaded), and
+    // counted a few seconds after that, once the hook handlers in them are learned too
+    struct StartupSample
+    {
+      int64_t time = 0;
+      uint16_t depth = 0;
+      // Into startupFrames
+      size_t first = 0;
+    };
+    std::vector<StartupSample> startupSamples;
+    std::vector<uintptr_t> startupFrames;
+    std::chrono::steady_clock::time_point startupBegin = std::chrono::steady_clock::now();
+    std::optional<std::chrono::steady_clock::time_point> hooksReadyAt;
+    bool startupDone = false;
+    Window startup;
   };
+
+  // At most this many samples of the start are kept: a minute, about 15 MB at the most
+  constexpr size_t MAX_STARTUP_SAMPLES = 60'000;
+  constexpr auto STARTUP_LEARNING = std::chrono::seconds(3);
+
+  void keepForStartup(Analyzer& analyzer, Sample const& sample)
+  {
+    if (analyzer.hooksReadyAt || analyzer.startupDone || sample.depth == 0 ||
+        analyzer.startupSamples.size() >= MAX_STARTUP_SAMPLES)
+      return;
+    analyzer.startupSamples.push_back({sample.time, sample.depth, analyzer.startupFrames.size()});
+    analyzer.startupFrames.insert(analyzer.startupFrames.end(), sample.frames, sample.frames + std::min<int>(sample.depth, MAX_FRAMES));
+  }
 
   // At most this many samples are held for the slow frames and the export: about 10 seconds.
   // A frame longer than that has only its end looked into
@@ -196,6 +225,53 @@ namespace
     }
     queueInMainThread([done = std::move(done), file, error]
                       { done(file, error); });
+  }
+
+  // The start counted with what's known now: the hooks, the learned handlers
+  void countStartup(Analyzer& analyzer)
+  {
+    if (analyzer.startupDone || !analyzer.map)
+      return;
+    if (!analyzer.hooksReadyAt)
+    {
+      if (s_hooksReady.load())
+        analyzer.hooksReadyAt = std::chrono::steady_clock::now();
+      return;
+    }
+    if (std::chrono::steady_clock::now() - *analyzer.hooksReadyAt < STARTUP_LEARNING)
+      return;
+
+    Window startup;
+    startup.seconds = std::chrono::duration<double>(*analyzer.hooksReadyAt - analyzer.startupBegin).count();
+    Sample sample;
+    for (auto const& kept : analyzer.startupSamples)
+    {
+      sample.time = kept.time;
+      sample.depth = kept.depth;
+      std::copy_n(analyzer.startupFrames.begin() + kept.first, kept.depth, sample.frames);
+      startup.profile.add(sample, *analyzer.map, &analyzer.attribution);
+      startup.stats.samples++;
+    }
+    analyzer.startup = std::move(startup);
+    analyzer.startupDone = true;
+    auto samples = analyzer.startupSamples.size();
+    analyzer.startupSamples = {};
+    analyzer.startupFrames = {};
+
+    log::info("The game's start, from Mod Profiler loaded to the game loaded: {}", startupLine(analyzer.startup, analyzer.buckets, 8));
+    // Where the mod with the most of it spent it
+    auto top = topMods(analyzer.startup, 1, Order::Own);
+    if (!top.empty() && top.front().ownPercent > 0)
+    {
+      auto bucket = top.front().bucket;
+      std::string places;
+      for (auto const& place : topPlaces(analyzer.startup.profile.functions(), bucket, 3))
+        places += fmt::format("{}{} {:.0f}%", places.empty() ? "" : ", ", shortName(nameOf(analyzer, place.address)),
+                              100.0 * place.samples / analyzer.startup.profile.at(bucket).own);
+      for (auto const& place : topPlaces(analyzer.startup.profile.hooks(), bucket, 2))
+        places += fmt::format(", under its hook of {}", nameOf(analyzer, place.address));
+      log::info("The start's busiest mod, {}: {} ({} samples kept)", analyzer.buckets[bucket].name, places, samples);
+    }
   }
 
   void findSlowFrames(Analyzer& analyzer)
@@ -423,6 +499,7 @@ namespace
     {
       window.profile.add(*sample, *analyzer.map, &analyzer.attribution);
       collectUnknown(analyzer, *sample);
+      keepForStartup(analyzer, *sample);
       window.stats.add(*sample, toMicros);
       analyzer.held.push_back(*sample);
       if (analyzer.held.size() > HELD_SAMPLES)
@@ -473,6 +550,7 @@ namespace
       {
         analyze(analyzer, window);
         findSlowFrames(analyzer);
+        countStartup(analyzer);
       }
       exportIfAsked(analyzer);
       learnUnknown(analyzer);
@@ -546,6 +624,11 @@ namespace
       snapshot->buckets = analyzer.buckets;
       snapshot->names = std::move(names);
       snapshot->slowFrames.assign(analyzer.slowFrames.begin(), analyzer.slowFrames.end());
+      if (analyzer.startupDone)
+      {
+        snapshot->startup = analyzer.startup;
+        snapshot->startupReady = true;
+      }
       {
         std::lock_guard lock(s_mutex);
         s_snapshot = std::move(snapshot);

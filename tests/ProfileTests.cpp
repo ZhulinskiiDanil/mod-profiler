@@ -280,6 +280,26 @@ static void testSummaryLine()
   CHECK(contains(summaryLine(Window{}, sampleBuckets(), 3), "0.0 s, no samples"));
 }
 
+static void testStartupLine()
+{
+  auto map = sampleMap();
+  Attribution attribution;
+  attribution.waits = {{0x5000, 0x5020}};
+  attribution.finish();
+  Window window;
+  window.seconds = 10;
+  for (int i = 0; i < 2; i++)
+    window.profile.add(stack({0x3010, 0x2010}), map, &attribution);
+  window.profile.add(stack({0x4010}), map, &attribution);
+  window.profile.add(stack({0x5010}), map, &attribution);
+  window.profile.add(stack({0x2010}), map, &attribution);
+  auto line = startupLine(window, sampleBuckets(), 3);
+  CHECK(contains(line, "10.0 s, waiting 20%, mods' own time 6.00 s (60.0%) | own: A 4.00 s (40.0%), B 2.00 s (20.0%)"));
+  CHECK(contains(startupLine(window, sampleBuckets(), 1), "own: A 4.00 s (40.0%)"));
+  CHECK(!contains(startupLine(window, sampleBuckets(), 1), "B 2.00"));
+  CHECK(contains(startupLine(Window{}, sampleBuckets(), 3), "no samples"));
+}
+
 static void testDiagnosticsProblems()
 {
   auto window = sampleWindow();
@@ -327,6 +347,7 @@ int main()
   testCost();
   testDiagnosticsLine();
   testSummaryLine();
+  testStartupLine();
   testDiagnosticsProblems();
   testDiagnosticsNoSamples();
   testDiagnosticsNoMods();

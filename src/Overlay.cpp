@@ -97,7 +97,7 @@ namespace
       y -= LINE * 1.2f;
 
       label(this, MARGIN, y, {0, 1}, GREY)->setString("Mod");
-      label(this, OWN_MS_X, y, {1, 1}, GREY)->setString("own ms");
+      m_ownHeader = label(this, OWN_MS_X, y, {1, 1}, GREY);
       m_baseHeader = label(this, BASE_X, y, {1, 1}, GREY);
       label(this, OWN_X, y, {1, 1}, GREY)->setString("own %");
       label(this, INCLUSIVE_X, y, {1, 1}, GREY)->setString("incl %");
@@ -138,22 +138,29 @@ namespace
         return;
       auto shared = profiler::snapshot();
       auto const& snapshot = *shared;
-      auto const& window = m_session ? snapshot.session : snapshot.recent;
+      // The start isn't counted until a few seconds after the game loaded: until then the session shows
+      auto view = m_view == View::Startup && !snapshot.startupReady ? View::Session : m_view;
+      auto const& window = view == View::Recent ? snapshot.recent : view == View::Session ? snapshot.session : snapshot.startup;
+      bool startup = view == View::Startup;
       auto const& baseline = baseline_file::current();
       auto const& profile = window.profile;
       auto samples = profile.samples();
 
-      m_viewButton->setString(m_session ? "[session]" : "[last 5 s]");
+      m_viewButton->setString(m_view == View::Recent ? "[last 5 s]" : m_view == View::Session ? "[session]" : "[startup]");
+      m_ownHeader->setString(startup ? "own s" : "own ms");
       m_baselineButton->setString(baseline.empty() ? "[set baseline]" : "[new baseline]");
       m_clearButton->setVisible(!baseline.empty());
       m_clearItem->setEnabled(!baseline.empty());
-      m_baseHeader->setString(baseline.empty() ? "" : "base ms");
+      m_baseHeader->setString(baseline.empty() || m_view == View::Startup ? "" : "base ms");
 
       auto fps = window.seconds > 0 ? window.frames / window.seconds : 0;
       auto frameMillis = window.frames ? window.seconds * 1000 / window.frames : 0;
-      m_title->setString(fmt::format("Mod Profiler   {:.0f} fps, {:.2f} ms a frame   {}", fps, frameMillis,
-                                     m_session ? fmt::format("session of {:.0f} s", window.seconds) : std::string("last 5 s"))
-                             .c_str());
+      if (startup)
+        m_title->setString(fmt::format("Mod Profiler   the game's start: {:.1f} s until loaded", window.seconds).c_str());
+      else
+        m_title->setString(fmt::format("Mod Profiler   {:.0f} fps, {:.2f} ms a frame   {}", fps, frameMillis,
+                                       view == View::Session ? fmt::format("session of {:.0f} s", window.seconds) : std::string("last 5 s"))
+                               .c_str());
       if (samples == 0)
       {
         m_summary->setString("No samples yet");
@@ -194,14 +201,17 @@ namespace
         bool picked = bucket.id == m_picked;
         row.name->setString(fit((picked ? "> " : "") + bucket.name, 30).c_str());
         row.name->setColor(picked ? GOLD : ccColor3B{255, 255, 255});
-        row.ownMillis->setString(fmt::format("{:.2f}", share.ownMillisPerFrame).c_str());
+        if (startup)
+          row.ownMillis->setString(fmt::format("{:.2f}", share.ownPercent / 100 * window.seconds).c_str());
+        else
+          row.ownMillis->setString(fmt::format("{:.2f}", share.ownMillisPerFrame).c_str());
         row.own->setString(fmt::format("{:.1f}", share.ownPercent).c_str());
         row.inclusive->setString(fmt::format("{:.1f}", share.inclusivePercent).c_str());
         row.button->setEnabled(true);
 
         // Against the baseline: red when the mod takes more than it did
         auto base = baseline.mods.find(bucket.id);
-        if (baseline.empty())
+        if (baseline.empty() || startup)
           row.base->setString("");
         else if (base == baseline.mods.end())
         {
@@ -264,7 +274,7 @@ namespace
 
     void onView(CCObject*)
     {
-      m_session = !m_session;
+      m_view = m_view == View::Recent ? View::Session : m_view == View::Session ? View::Startup : View::Recent;
       refresh(0);
     }
 
@@ -385,8 +395,15 @@ namespace
     std::vector<std::string> m_shown;
     std::string m_picked;
     bool m_clicked = false;
-    // The whole session instead of the last seconds
-    bool m_session = false;
+    // The last seconds, the whole session, or the game's start
+    enum class View
+    {
+      Recent,
+      Session,
+      Startup,
+    };
+    View m_view = View::Recent;
+    CCLabelBMFont* m_ownHeader = nullptr;
   };
 
   Overlay* s_overlay = nullptr;

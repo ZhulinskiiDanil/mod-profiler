@@ -90,6 +90,9 @@ namespace profiler
     std::unordered_map<uintptr_t, std::string> names;
     // The latest last
     std::vector<SlowFrame> slowFrames;
+    // From the profiler's start until the game was loaded, once it's counted (a few seconds after)
+    Window startup;
+    bool startupReady = false;
   };
   // Whether the snapshot needs the names of the busiest places (the table is shown): naming loads
   // PDBs, which isn't done for nobody

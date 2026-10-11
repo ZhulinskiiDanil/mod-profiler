@@ -253,6 +253,33 @@ std::string summaryLine(Window const& window, Buckets const& buckets, size_t top
   return line;
 }
 
+std::string startupLine(Window const& window, Buckets const& buckets, size_t topCount)
+{
+  auto const& profile = window.profile;
+  std::string line = format("%.1f s", window.seconds);
+  if (profile.samples() == 0)
+    return line + ", no samples";
+  auto waiting = 100.0 * (profile.idle() + profile.between()) / profile.samples();
+  line += format(", waiting %.0f%%", waiting);
+
+  // The game's own share, and what's left to the system (drivers, file reads)
+  double modsOwn = 0;
+  std::string mods;
+  size_t shown = 0;
+  for (auto const& share : topMods(window, buckets.size(), Order::Own))
+  {
+    modsOwn += share.ownPercent;
+    if (share.ownPercent <= 0 || shown >= topCount)
+      continue;
+    auto const& name = share.bucket < buckets.size() ? buckets[share.bucket].name : std::string("?");
+    mods += format("%s %s %.2f s (%.1f%%)", shown++ ? "," : "", name.c_str(), share.ownPercent / 100 * window.seconds,
+                   share.ownPercent);
+  }
+  line += format(", mods' own time %.2f s (%.1f%%) | own:%s", modsOwn / 100 * window.seconds, modsOwn,
+                 mods.empty() ? " none" : mods.c_str());
+  return line;
+}
+
 std::string diagnosticsLine(Window const& window, Buckets const& buckets, size_t topCount)
 {
   auto const& stats = window.stats;
