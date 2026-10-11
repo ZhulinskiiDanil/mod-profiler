@@ -93,8 +93,24 @@ namespace
     profiler::setLoop(run, {mainLoop, pollEvents});
   }
 
+  // The last seconds to a file for speedscope.app, with a notification of where
+  void exportProfile()
+  {
+    Notification::create("Saving the last 10 seconds...", NotificationIcon::Loading, 1.5f)->show();
+    profiler::requestExport([](std::string const& file, std::string const& error)
+                            {
+                              if (!error.empty())
+                              {
+                                Notification::create("Not saved: " + error, NotificationIcon::Error)->show();
+                                return;
+                              }
+                              log::info("Saved the profile to {}, open it at https://www.speedscope.app", file);
+                              Notification::create("Saved: open it at speedscope.app (the folder is in the log)", NotificationIcon::Success, 4.f)->show(); });
+  }
+
   // MOD_PROFILER_SELFTEST=1 at launch: one slow frame of this mod's own, 40 seconds after the game
-  // loaded, so a check can see the slow frames found and blamed on the right mod and function
+  // loaded, and the profile saved 5 seconds later, so a check can see the slow frame found, blamed on
+  // the right mod and function, and in the file
   void __declspec(noinline) selfTestSlowFrame()
   {
     auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(120);
@@ -108,6 +124,7 @@ namespace
   {
   public:
     void run(float) { selfTestSlowFrame(); }
+    void save(float) { exportProfile(); }
   };
 
   // Counts the frames as a plain scheduler callback: a hook on the frame would put this mod on
@@ -135,6 +152,11 @@ $on_mod(Loaded)
                                  {
                                    if (down && !repeat)
                                      overlay::toggle(); });
+
+  listenForKeybindSettingPresses("export-key", [](Keybind const&, bool down, bool repeat, double)
+                                 {
+                                   if (down && !repeat)
+                                     exportProfile(); });
 }
 
 $on_game(Loaded)
@@ -148,7 +170,12 @@ $on_game(Loaded)
 
   char value[8] = {};
   if (GetEnvironmentVariableA("MOD_PROFILER_SELFTEST", value, sizeof(value)) && value[0] == '1')
-    CCDirector::get()->getScheduler()->scheduleSelector(schedule_selector(SelfTest::run), new SelfTest(), 0, 0, 40, false);
+  {
+    // Then the profile with it in, saved
+    auto test = new SelfTest();
+    CCDirector::get()->getScheduler()->scheduleSelector(schedule_selector(SelfTest::run), test, 0, 0, 40, false);
+    CCDirector::get()->getScheduler()->scheduleSelector(schedule_selector(SelfTest::save), test, 0, 0, 45, false);
+  }
 
   overlay::setup();
   overlay::setVisible(Mod::get()->getSavedValue<bool>("overlay-visible", false));

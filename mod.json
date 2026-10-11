@@ -30,6 +30,13 @@
 			"default": "Ctrl+Shift+P",
 			"category": "universal"
 		},
+		"export-key": {
+			"name": "Save a profile",
+			"description": "Saves the last 10 seconds of samples to a file in the mod's save folder (the log says where). Open it at <cy>speedscope.app</c> for a flame graph of every stack",
+			"type": "keybind",
+			"default": "Ctrl+Shift+O",
+			"category": "universal"
+		},
 		"enabled": {
 			"name": "Sampling",
 			"description": "Looks at the game's main thread about once a millisecond to see which mod's code it is in. Off: the profiler does nothing",

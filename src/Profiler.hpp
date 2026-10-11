@@ -5,6 +5,7 @@
 #include "Modules.hpp"
 #include "Profile.hpp"
 
+#include <functional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -43,6 +44,9 @@ namespace profiler
   void frame();
   // The mods are loaded and have made their hooks: generated code can be looked up
   void hooksReady();
+  // Saves the last seconds of samples for speedscope.app, on the analyzer thread at its next
+  // second. `done` gets the file, or an error, on the main thread
+  void requestExport(std::function<void(std::string const& file, std::string const& error)> done);
 
   // How many seconds the recent window has
   inline constexpr int RECENT_SECONDS = 5;

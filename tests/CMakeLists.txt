@@ -30,3 +30,6 @@ add_test(NAME attribution COMMAND attribution-tests)
 
 add_executable(spikes-tests SpikesTests.cpp ../src/Spikes.cpp)
 add_test(NAME spikes COMMAND spikes-tests)
+
+add_executable(speedscope-tests SpeedscopeTests.cpp ../src/Speedscope.cpp)
+add_test(NAME speedscope COMMAND speedscope-tests)

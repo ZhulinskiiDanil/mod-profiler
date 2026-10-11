@@ -2,6 +2,7 @@
 
 #include "Ring.hpp"
 #include "Sampler.hpp"
+#include "Speedscope.hpp"
 #include "Spikes.hpp"
 #include "Symbols.hpp"
 
@@ -11,6 +12,7 @@
 #include <chrono>
 #include <ctime>
 #include <deque>
+#include <fstream>
 #include <mutex>
 #include <thread>
 #include <unordered_set>
@@ -29,6 +31,8 @@ namespace
   std::atomic<bool> s_logSpikes{true};
   // When each frame ended, from the main thread
   Ring<int64_t> s_frameEnds(4096);
+  // An export asked for, under s_mutex
+  std::function<void(std::string const&, std::string const&)> s_exportDone;
   // Geode's hooks are in place: generated code can be looked up from then on
   std::atomic<bool> s_hooksReady{false};
 
@@ -77,9 +81,9 @@ namespace
     std::deque<profiler::SlowFrame> slowFrames;
   };
 
-  // At most this many samples are held for the slow frames: a frame longer than that many
-  // milliseconds has only its end looked into
-  constexpr size_t HELD_SAMPLES = 6000;
+  // At most this many samples are held for the slow frames and the export: about 10 seconds.
+  // A frame longer than that has only its end looked into
+  constexpr size_t HELD_SAMPLES = 10000;
 
   // A function's name, or module+offset
   std::string nameOf(Analyzer& analyzer, uintptr_t address)
@@ -102,6 +106,89 @@ namespace
     char text[16];
     std::strftime(text, sizeof(text), "%H:%M:%S", &local);
     return text;
+  }
+
+  // The held samples as a speedscope profile: frames merged by function, hook handlers as one
+  speedscope::Profile exportProfile(Analyzer& analyzer)
+  {
+    speedscope::Profile profile;
+    profile.name = fmt::format("Geometry Dash main thread, {}", localTime());
+    std::unordered_map<uintptr_t, uint32_t> frameOf;
+    uint32_t handlerFrame = UINT32_MAX;
+
+    auto frameFor = [&](uintptr_t address, bool first) -> uint32_t
+    {
+      auto lookup = first ? address : address - 1;
+      if (analyzer.map->bucketOf(lookup) == bucket::HOOKS)
+      {
+        if (handlerFrame == UINT32_MAX)
+        {
+          handlerFrame = static_cast<uint32_t>(profile.frames.size());
+          profile.frames.push_back({"(hook handler)", ""});
+        }
+        return handlerFrame;
+      }
+      auto start = analyzer.map->functionStart(lookup);
+      auto key = start ? start : address;
+      if (auto known = frameOf.find(key); known != frameOf.end())
+        return known->second;
+      auto index = static_cast<uint32_t>(profile.frames.size());
+      auto image = analyzer.map->findImage(key);
+      profile.frames.push_back({shortName(nameOf(analyzer, key)), image >= 0 ? analyzer.map->module(image).name : ""});
+      frameOf[key] = index;
+      return index;
+    };
+
+    auto ticksPerMilli = sampler::ticksPerSecond() / 1000.0;
+    auto const& held = analyzer.held;
+    for (size_t i = 0; i < held.size(); i++)
+    {
+      auto const& sample = held[i];
+      if (sample.depth == 0)
+        continue;
+      std::vector<uint32_t> stack;
+      for (int frame = std::min<int>(sample.depth, MAX_FRAMES) - 1; frame >= 0; frame--)
+        stack.push_back(frameFor(sample.frames[frame], frame == 0));
+      // A sample stands for the time until the next one, a few intervals at most (the sampler can be late)
+      double weight = 1;
+      if (i + 1 < held.size())
+        weight = std::clamp((held[i + 1].time - sample.time) / ticksPerMilli, 0.0, 10.0);
+      profile.stacks.push_back(std::move(stack));
+      profile.weights.push_back(weight);
+    }
+    return profile;
+  }
+
+  void exportIfAsked(Analyzer& analyzer)
+  {
+    std::function<void(std::string const&, std::string const&)> done;
+    {
+      std::lock_guard lock(s_mutex);
+      done.swap(s_exportDone);
+    }
+    if (!done)
+      return;
+
+    std::string file, error;
+    if (analyzer.held.empty())
+      error = "No samples yet";
+    else
+    {
+      auto folder = Mod::get()->getSaveDir() / "profiles";
+      std::error_code code;
+      std::filesystem::create_directories(folder, code);
+      auto time = localTime();
+      std::erase(time, ':');
+      auto path = folder / fmt::format("profile-{}.speedscope.json", time);
+      std::ofstream out(path, std::ios::binary);
+      out << speedscope::json(exportProfile(analyzer));
+      if (out)
+        file = utils::string::pathToString(path);
+      else
+        error = "Couldn't write the file";
+    }
+    queueInMainThread([done = std::move(done), file, error]
+                      { done(file, error); });
   }
 
   void findSlowFrames(Analyzer& analyzer)
@@ -159,10 +246,6 @@ namespace
         analyzer.slowFrames.pop_front();
     }
 
-    // Samples before the frame in progress aren't needed anymore
-    auto oldest = analyzer.clock.oldestStart();
-    while (!analyzer.held.empty() && analyzer.held.front().time < oldest)
-      analyzer.held.pop_front();
   }
 
   // The busiest places of every mod in a window, named: hooks by Geode, functions as module+offset
@@ -340,6 +423,7 @@ namespace
       {
         analyze(analyzer, window);
         findSlowFrames(analyzer);
+        exportIfAsked(analyzer);
       }
       learnUnknown(analyzer);
       refreshMap(analyzer);
@@ -453,6 +537,12 @@ void profiler::frame()
 }
 
 void profiler::hooksReady() { s_hooksReady = true; }
+
+void profiler::requestExport(std::function<void(std::string const& file, std::string const& error)> done)
+{
+  std::lock_guard lock(s_mutex);
+  s_exportDone = std::move(done);
+}
 
 profiler::Snapshot profiler::snapshot()
 {
