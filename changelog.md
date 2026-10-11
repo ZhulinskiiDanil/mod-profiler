@@ -1,3 +1,11 @@
+# v0.4.0
+
+- The game's start: the profiler loads before the other mods, the log says how long loading took and each mod's own seconds of it, with where the busiest one spent them. A `[startup]` view in the table, and the start's flame graph from `[save profile]` there
+- Numbers by scene: a `[this scene]` view, and a summary in the log when the game leaves a scene
+- Stacks through Geode's hook handlers and trampolines are exact: past their prolog the frame comes from RBP, their unwind info leaves out what a calling convention adds. In a level 234 of 240 stacks go all the way down
+- Geode's helper for calling the original, between a mod's detour and the original, isn't Geode's own time anymore: opening a level was half Geode's, now it's a quarter, in its own hook
+- The analyzer takes half the CPU it did (mods looked up by path in a table, no pause for a new map)
+
 # v0.3.0
 
 - Slow frames: every frame over 50 ms (a setting) is looked into, with the mod whose time it was, its function, its hook and a stack. At the bottom of the table and in the log

@@ -11,9 +11,11 @@ A [Geode](https://geode-sdk.org) mod for Geometry Dash that shows how much of ev
 ## Use
 
 - `Ctrl+Shift+P` shows the table. Click a mod to see which of its hooks and functions its time goes to
+- **The game's start**: the profiler loads right after Improved Logger, before the other mods, and the log says how long the game took to load and which mods' own time it was, in seconds. With 60 mods: `8.0 s ... own: ImagePlus 2.88 s (35.9%), Mega Hack 1.35 s (16.8%), Geode 0.35 s (4.3%) ...`, and where the busiest one spent it (ImagePlus decoding images under its hook of `CCImage::initWithImageFile`). The table's view button goes to **[startup]**, where **[save profile]** saves the start's flame graph
+- **By scene**: **[this scene]** shows the numbers since the game went to the scene it's in (a level, the editor, a menu), and leaving a scene logs its summary
 - **Slow frames** (longer than 50 ms, a setting) are listed at the bottom of the table and in the log, with the mod whose time they were, its function and a stack
 - `Ctrl+Shift+O` (or **[save profile]**) saves the last 10 seconds of stacks for [speedscope.app](https://www.speedscope.app): a flame graph of everything the main thread did
-- **[set baseline]** keeps the session's numbers, even after a restart. The table then has a column with each mod's own time in the baseline, red when it takes more now. Before and after a mod update, with a mod turned off or on: **[reset]**, play the same thing, compare. **[last 5 s]** switches the table to the whole session
+- **[set baseline]** keeps the session's numbers, even after a restart. The table then has a column with each mod's own time in the baseline, red when it takes more now. Before and after a mod update, with a mod turned off or on: **[reset]**, play the same thing, compare. **[last 5 s]** goes through the views: the last 5 seconds, this scene, the whole session, the game's start
 - With [Improved Logger](https://github.com/ZhulinskiiDanil/improved-geode-logger): the numbers are pinned in its console, and its marker key (`Ctrl+Shift+M` in the game) logs the profile since the last marker, compared with the baseline if there is one
 
 ## What it measures
@@ -60,7 +62,7 @@ Measured in the main menu with 60 mods installed, 80 seconds each (the log line 
 | 2 ms | 500 | 14 ms a second (1.4%) | 0.9% of a core | 0.2% of a core |
 | 5 ms | 200 | 7 ms a second (0.7%) | under 0.5% | 0.2% of a core |
 
-The main thread standing still is the cost that matters: at 1 ms a frame takes about 2.6% longer. The table itself shows up in the list as Mod Profiler, with about 0.1% of own time. The threads' CPU time comes from `GetThreadTimes`, which counts in 15.6 ms steps: the lowest numbers are rough. Memory: about 8 MB, most of it the last 10 seconds of stacks.
+The main thread standing still is the cost that matters: at 1 ms a frame takes up to about 2.6% longer. That's an upper bound: of the 26 us, about 18 are *stopping*, Windows waiting for the thread to get to a point where it can be stopped, and the thread goes on working meanwhile. Reading the stack is about 9 us. That's also why the worst single sample can say 10-20 ms: the thread was in a long system call (reading files while the game loads) and stopped only after it. The table itself shows up in the list as Mod Profiler, with about 0.1% of own time. The threads' CPU time comes from `GetThreadTimes`, which counts in 15.6 ms steps: the lowest numbers are rough. Memory: about 8 MB, most of it the last 10 seconds of stacks.
 
 ## Settings
 

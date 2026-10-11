@@ -11,10 +11,14 @@ Press <cy>Ctrl+Shift+P</c> in the game for the table:
 
 The top lines say how much of the time is in frames, between frames (a frame limiter waiting) and idle, and what the profiler itself costs.
 
+## The game's start
+
+The profiler loads before the other mods, and the log says how long the game took to load and how many seconds of it were each mod's own work, with where the busiest one spent it. The table's <cy>[startup]</c> view has the same, and <cy>[save profile]</c> there saves the start's flame graph.
+
 ## Find out what changed
 
 - <cy>[set baseline]</c> keeps the session's numbers, even after a restart. The table then shows each mod's own time back then, red when it takes more now: before and after a mod update, with a mod turned off or on
-- <cy>[reset]</c> starts the session again, <cy>[last 5 s]</c> switches to the whole session
+- <cy>[reset]</c> starts the session again, <cy>[last 5 s]</c> goes through the views: the last 5 seconds, this scene (a level apart from the menu), the session, the game's start
 
 ## Look deeper
 
