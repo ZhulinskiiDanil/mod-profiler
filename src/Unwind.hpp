@@ -38,4 +38,10 @@ namespace unwind
   // Whether the code at `pc` is the end of such a function: `add rsp, imm`, `pop rbp` or `ret`, where
   // RBP isn't the frame anymore (or soon won't be)
   bool isFramePointerEpilog(uint8_t const* pc, size_t available) noexcept;
+
+  // Whether `pc` is at the pops and ret ending an epilog (pops, then ret, nothing else): what's left to
+  // unwind is read from RSP, a few registers and the return address, whatever the frame register says
+  bool isEpilogTail(uint8_t const* pc, size_t available) noexcept;
+  // The most an epilog's tail reads from RSP: every nonvolatile register popped, then the return address
+  inline constexpr uint64_t EPILOG_TAIL_BYTES = 9 * 8;
 } // namespace unwind

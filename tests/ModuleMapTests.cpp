@@ -9,6 +9,7 @@ static void testFixedBuckets()
   Buckets buckets;
   CHECK(buckets.size() == bucket::FIRST_MOD);
   CHECK(buckets[bucket::HOOKS].id == "hooks");
+  CHECK(buckets[bucket::HOOKS].name == "Hook dispatch");
   CHECK(buckets[bucket::GAME].id == "GeometryDash.exe");
   CHECK(buckets[bucket::COCOS].id == "libcocos2d.dll");
   CHECK(buckets[bucket::OTHER].id == "other");

@@ -253,7 +253,7 @@ static void testDiagnosticsLine()
   CHECK(contains(line, "suspended avg 15.0 us, max 40.0 us (stopping avg 5.0 us, max 20.0 us)"));
   CHECK(contains(line, "cost: stopped 0.1 ms/s, sampler 0.0%, analyzer 0.0% of a core"));
   CHECK(contains(line, "100 fps"));
-  CHECK(contains(line, "self: Geometry Dash 60.0%, Cocos2d 0.0%, Other 0.0%, Hook handlers 0.0%, mods 40.0%"));
+  CHECK(contains(line, "self: Geometry Dash 60.0%, Cocos2d 0.0%, Other 0.0%, Hook dispatch 0.0%, mods 40.0%"));
   CHECK(contains(line, "inclusive: zhulis.a 40.0%, zhulis.b 10.0%"));
   CHECK(contains(line, "idle 0.0%, between frames 0.0%"));
   // Without an attribution nobody has own time

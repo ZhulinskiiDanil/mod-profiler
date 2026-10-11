@@ -171,8 +171,8 @@ static void testThreadInTheMod()
 {
   Process process;
   CHECK(verdict(process, stack({process.MA(0x150), process.H(0x10), process.G(0x250)})).owner == static_cast<int>(process.A));
-  // Only hook handlers under it
-  CHECK(verdict(process, stack({process.H(0x10), process.MA(0x150)})).owner == static_cast<int>(process.A));
+  // A frame of A under a hook handler it called: A's (the thread is in the handler: the hooks')
+  CHECK(verdict(process, stack({process.MA(0x250), process.MA(0x150)})).owner == static_cast<int>(process.A));
 }
 
 static void testPatchedCall()
@@ -231,9 +231,14 @@ static void testDetoursCountAsTheFunction()
 
 static void testHookPlumbing()
 {
-  // A handler calling a function of A that isn't a detour (the hook library's index keeping): nobody's
+  // A handler calling a function of A that isn't a detour (the hook library's index keeping): the hooks'
   Process process;
-  CHECK(verdict(process, stack({process.MA(0x250), process.H(0x10), process.G(0x250)})).owner == -1);
+  auto plumbing = verdict(process, stack({process.MA(0x250), process.H(0x10), process.G(0x250)}));
+  CHECK(plumbing.owner == static_cast<int>(bucket::HOOKS));
+  CHECK(plumbing.function == process.MA(0x200));
+  // The thread in the handler itself
+  auto handler = verdict(process, stack({process.H(0x10), process.MA(0x150), process.G(0x250)}));
+  CHECK(handler.owner == static_cast<int>(bucket::HOOKS));
   // A handler calling A's detour: A's
   CHECK(verdict(process, stack({process.MA(0x150), process.H(0x10), process.G(0x250)})).owner == static_cast<int>(process.A));
 }

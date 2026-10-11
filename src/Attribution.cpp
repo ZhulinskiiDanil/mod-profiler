@@ -161,10 +161,22 @@ Verdict attribute(Sample const& sample, ModuleMap const& map, Attribution const&
   for (int i = 0; i < sample.depth && i < MAX_FRAMES; i++)
   {
     auto owner = map.bucketOf(sample.frames[i]);
+    // The thread in a hook handler's own code: the cost of the hooks
+    if (i == 0 && owner == bucket::HOOKS)
+    {
+      verdict.owner = static_cast<int>(bucket::HOOKS);
+      verdict.function = sample.frames[0];
+      break;
+    }
     if (owner < bucket::FIRST_MOD || passesOn(sample, map, attribution, i, owner))
       continue;
     if (isHookPlumbing(sample, map, attribution, i))
+    {
+      verdict.owner = static_cast<int>(bucket::HOOKS);
+      auto start = map.functionStart(lookupAddress(sample, i));
+      verdict.function = start ? start : sample.frames[i];
       break;
+    }
     // Geode's helper that a mod's detour calls the original through: the mod passes on, so does it
     if (attribution.loader >= 0 && owner == static_cast<uint32_t>(attribution.loader) && isBetween(sample, map, attribution, i))
     {

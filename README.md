@@ -6,7 +6,7 @@ A [Geode](https://geode-sdk.org) mod for Geometry Dash that shows how much of ev
 
 <img src="logo.png" width="128" alt="logo">
 
-![The table in the game](docs/table.png)
+![The table in a level: Icon Mayhem's own time by function, from its PDB](docs/level.png)
 
 ## Use
 
@@ -69,6 +69,7 @@ The main thread standing still is the cost that matters: at 1 ms a frame takes u
 | Setting | Default | What it does |
 | --- | --- | --- |
 | Show the table | `Ctrl+Shift+P` | Shows and hides the table |
+| Table corner, Table size | top left, 1 | Where the table is and how big |
 | Save a profile | `Ctrl+Shift+O` | The last 10 seconds for speedscope.app, to `profiles/` in the mod's save folder |
 | Sampling | on | Off: the profiler does nothing |
 | Sample every (ms) | 1 | Less is more precise and costs more |

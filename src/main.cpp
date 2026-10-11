@@ -157,6 +157,7 @@ $on_mod(Loaded)
   listenForAllSettingChanges([](std::string_view, std::shared_ptr<SettingV3>)
                              {
                                profiler::setOptions(readOptions());
+                               overlay::applySettings();
                                logger_link::setWatching(Mod::get()->getSettingValue<bool>("logger-watch")); });
 
   listenForKeybindSettingPresses("overlay-key", [](Keybind const&, bool down, bool repeat, double)

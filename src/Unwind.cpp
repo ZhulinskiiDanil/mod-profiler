@@ -87,6 +87,25 @@ bool unwind::isFramePointerEpilog(uint8_t const* pc, size_t available) noexcept
   return available >= 3 && pc[0] == 0x48 && (pc[1] == 0x81 || pc[1] == 0x83) && pc[2] == 0xC4;
 }
 
+bool unwind::isEpilogTail(uint8_t const* pc, size_t available) noexcept
+{
+  // Pops, then ret: only then does RtlVirtualUnwind take it for an epilog and read from RSP. A pop in
+  // the middle of a function is unwound with the frame register, which must be checked then
+  size_t at = 0;
+  for (int pops = 0; pops <= 8 && at < available; pops++)
+  {
+    if (pc[at] == 0xC3)
+      return true;
+    if (pc[at] >= 0x58 && pc[at] <= 0x5F)
+      at += 1;
+    else if (pc[at] == 0x41 && at + 1 < available && pc[at + 1] >= 0x58 && pc[at + 1] <= 0x5F)
+      at += 2;
+    else
+      return false;
+  }
+  return false;
+}
+
 unwind::Extent unwind::frameExtent(uint8_t const* image, size_t imageSize, uint32_t unwindRva, uint32_t offset) noexcept
 {
   Extent extent;

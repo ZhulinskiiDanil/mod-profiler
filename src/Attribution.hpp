@@ -7,7 +7,8 @@
 // Own time gives each sample to one mod at most: the innermost one doing its own work, not passing
 // a call on to the original function (or to the next mod's hook of it). Samples where the thread
 // waits (a frame limiter's sleep, vsync) are idle, nobody's. So are the samples in the game's loop
-// between frames: a frame limiter that spins on the clock instead of sleeping
+// between frames: a frame limiter that spins on the clock instead of sleeping. Time in the hook
+// handlers' own code, and in the hook library's bookkeeping they call, is the hooks' own: the HOOKS bucket
 #include "ModuleMap.hpp"
 #include "Sample.hpp"
 

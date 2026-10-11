@@ -12,7 +12,7 @@ Buckets::Buckets()
       {"GeometryDash.exe", "Geometry Dash"},
       {"libcocos2d.dll", "Cocos2d"},
       {"other", "Other"},
-      {"hooks", "Hook handlers"},
+      {"hooks", "Hook dispatch"},
   };
 }
 

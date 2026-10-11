@@ -9,6 +9,8 @@ namespace overlay
   void toggle();
   void setVisible(bool visible);
   bool visible();
+  // The corner and the size from the settings again
+  void applySettings();
   // The last 10 seconds (or the game's start) to a file for speedscope.app, with a notification of how it went
   void saveProfile(bool startup = false);
 } // namespace overlay

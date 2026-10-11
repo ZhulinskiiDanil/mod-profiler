@@ -123,9 +123,18 @@ namespace
     if (!extent.ok || !bounds.holds(sp, 8))
       return false;
     auto frame = sp;
+    auto bytes = extent.bytes;
     if (extent.usesFrameRegister)
-      frame = (&context.Rax)[extent.frameRegister] - extent.frameOffset;
-    if (!bounds.holds(frame, extent.bytes))
+    {
+      // In the pops and ret of the epilog the frame register may be the caller's already: unwinding
+      // reads from RSP then, and only a few slots
+      auto pc = reinterpret_cast<uint8_t const*>(context.Rip);
+      if (unwind::isEpilogTail(pc, std::min<uintptr_t>(24, module.base + module.size - context.Rip)))
+        bytes = unwind::EPILOG_TAIL_BYTES;
+      else
+        frame = (&context.Rax)[extent.frameRegister] - extent.frameOffset;
+    }
+    if (!bounds.holds(frame, bytes))
       return false;
 
     PVOID handlerData = nullptr;

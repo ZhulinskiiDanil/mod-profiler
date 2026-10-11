@@ -167,6 +167,9 @@ std::vector<Share> topMods(Window const& window, size_t limit, Order order)
   for (uint32_t i = bucket::FIRST_MOD; i < buckets.size(); i++)
     if (buckets[i].inclusive > 0)
       shares.push_back(shareOf(window, i));
+  // The hooks' own cost is listed like a mod's
+  if (bucket::HOOKS < buckets.size() && buckets[bucket::HOOKS].own > 0)
+    shares.push_back(shareOf(window, bucket::HOOKS));
   std::stable_sort(shares.begin(), shares.end(), [&](Share const& a, Share const& b)
                    {
                      if (order == Order::Own && a.ownPercent != b.ownPercent)

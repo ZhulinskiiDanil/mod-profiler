@@ -426,12 +426,19 @@ namespace
 
   Overlay* s_overlay = nullptr;
 
+  // In the corner and at the size the settings say
   void place()
   {
     if (!s_overlay)
       return;
+    auto mod = Mod::get();
+    auto corner = mod->getSettingValue<std::string>("table-corner");
+    bool right = corner.ends_with("right");
+    bool bottom = corner.starts_with("Bottom");
     auto size = CCDirector::get()->getWinSize();
-    s_overlay->setPosition({MARGIN, size.height - MARGIN});
+    s_overlay->setScale(static_cast<float>(mod->getSettingValue<double>("table-scale")));
+    s_overlay->setAnchorPoint({right ? 1.f : 0.f, bottom ? 0.f : 1.f});
+    s_overlay->setPosition({right ? size.width - MARGIN : MARGIN, bottom ? MARGIN : size.height - MARGIN});
   }
 } // namespace
 
@@ -462,6 +469,8 @@ void overlay::setVisible(bool visible)
 void overlay::toggle() { setVisible(!visible()); }
 
 bool overlay::visible() { return s_overlay && s_overlay->isVisible(); }
+
+void overlay::applySettings() { place(); }
 
 void overlay::saveProfile(bool startup)
 {

@@ -38,6 +38,30 @@
 			"default": "Ctrl+Shift+P",
 			"category": "universal"
 		},
+		"table-corner": {
+			"name": "Table corner",
+			"description": "Where the table is on the screen",
+			"type": "string",
+			"default": "Top left",
+			"one-of": [
+				"Top left",
+				"Top right",
+				"Bottom left",
+				"Bottom right"
+			]
+		},
+		"table-scale": {
+			"name": "Table size",
+			"description": "How big the table is",
+			"type": "float",
+			"default": 1.0,
+			"min": 0.6,
+			"max": 1.6,
+			"control": {
+				"slider": true,
+				"slider-step": 0.1
+			}
+		},
 		"export-key": {
 			"name": "Save a profile",
 			"description": "Saves the last 10 seconds of samples to a file in the mod's save folder (the log says where). Open it at <cy>speedscope.app</c> for a flame graph of every stack",

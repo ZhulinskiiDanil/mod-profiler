@@ -218,6 +218,28 @@ static void testFramePointerEpilog()
   CHECK(!unwind::isFramePointerEpilog(ret, 0));
 }
 
+static void testEpilogTail()
+{
+  uint8_t ret[] = {0xC3};
+  uint8_t popRbpRet[] = {0x5D, 0xC3};
+  uint8_t pops[] = {0x41, 0x5F, 0x41, 0x5E, 0x5F, 0x5E, 0x5D, 0xC3};
+  uint8_t popThenWork[] = {0x58, 0x48, 0x89, 0xC1};
+  uint8_t add[] = {0x48, 0x83, 0xC4, 0x28, 0xC3};
+  uint8_t rex[] = {0x41, 0x50, 0xC3};
+  CHECK(unwind::isEpilogTail(ret, 1));
+  CHECK(unwind::isEpilogTail(popRbpRet, 2));
+  CHECK(unwind::isEpilogTail(pops, sizeof(pops)));
+  // A pop in the middle of a function
+  CHECK(!unwind::isEpilogTail(popThenWork, sizeof(popThenWork)));
+  // Before the pops: the frame register still holds
+  CHECK(!unwind::isEpilogTail(add, sizeof(add)));
+  // push r8, not a pop
+  CHECK(!unwind::isEpilogTail(rex, sizeof(rex)));
+  // The ret isn't in the readable bytes
+  CHECK(!unwind::isEpilogTail(popRbpRet, 1));
+  CHECK(!unwind::isEpilogTail(ret, 0));
+}
+
 // ! --- Broken info --- !
 
 static void testBroken()
@@ -259,6 +281,7 @@ int main()
   testFunctionBegin();
   testFramePointerProlog();
   testFramePointerEpilog();
+  testEpilogTail();
   testBroken();
   return finish("unwind");
 }

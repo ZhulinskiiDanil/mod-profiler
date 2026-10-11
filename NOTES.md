@@ -93,6 +93,25 @@ Start: **Sun Oct 11 03:33:17 2026** (the first `date` of the run).
   under the hooks of `CCSprite::create` and `CCSpriteBatchNode::initWithTexture`): worth telling Geode about.
 - 05:40 v0.3.0 released (pre-release) after a 100 s check in a level.
 
+- 05:45 exact stacks through TulipHook's handlers and trampolines: they start with `push rbp; mov rbp, rsp`
+  and a calling convention may move RSP past what their unwind info says, so past their prolog the frame
+  comes from RBP. In a level 234 of 240 sampled stacks go down to `RtlUserThreadStart`.
+- 05:49 Geode's helper for calling the original (between a mod's detour and the original) is passed over:
+  opening a level went from 49-53% Geode's own time to 25-34%, now in Geode's own hook of
+  `CCSpriteFrameCache::spriteFrameByName` (`operator new`).
+- 05:53 **the game's start** (own idea, after the backlog): "which mod makes my game load slowly" is the
+  question a profiler answers best. The profiler loads early now (`early-load`, priority -2900, right after
+  Improved Logger) and keeps the start's samples until the hooks are known. With 60 mods: 8.0 s,
+  ImagePlus 2.83-2.90 s (35%, decoding images under its hook of `CCImage::initWithImageFile`), Mega Hack
+  1.35-1.39 s, Geode 0.32-0.35 s. The start's flame graph can be saved too.
+- 05:58 numbers by scene (own idea): a level's numbers apart from the menu's, summed up when the game leaves.
+- 06:00 the analyzer measured itself: building a map was 5-19 ms a second (every module's path compared
+  with every mod's, lowered each time). Now 0.7% of a core instead of 1.3%.
+- 06:08 the worst single stops (10-20 ms) are all *stopping*: Windows delivers a suspension only when the
+  thread leaves a long system call, the thread works meanwhile. They're at the game's start. The README says
+  the 2.6% is an upper bound.
+- 06:10 v0.4.0 released (pre-release) after a check in a level.
+
 ## Numbers
 
 | Check | Samples/s | Suspended avg | Max | Scanned/s | Result |
@@ -106,3 +125,4 @@ Start: **Sun Oct 11 03:33:17 2026** (the first `date` of the run).
 | self test, 100 s | 1000 | 26-27 us | - | - | slow frame of 121 ms found, 98-99% blamed on the profiler's test function |
 | v0.3.0, 100 s in a level | 994 | 29.6 us | 733 us single | 18 | stopped 29.4 ms/s, sampler 2.0%, analyzer 0.7%, no gap, no crash |
 | sampling off, 80 s in a level | 0 | - | - | - | no diagnostics, no slow frames, table says "No samples yet" |
+| v0.4.0, start + 20 s menu + 75 s level | 997 | 28.9 us | 46.0 us avg in the worst second | 20 | start counted (8.0 s), no gap, no crash, analyzer 0.69% |
