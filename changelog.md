@@ -1,3 +1,12 @@
+# v0.5.0
+
+- Hangs: a frame going on for 2 seconds is in the log before it ends, with the mod, its function and the stack the game is stuck in. Deadlocks too: a frame waiting on a lock or another thread, with the mod it waits in a call of. A minimized game, a dialog or the game closing aren't hangs
+- Hook dispatch is a row of its own: the time in Geode's hook handlers and their bookkeeping
+- Settings for the table's corner and size
+- The session is summed up in the log when the game closes
+- Stacks in the last bytes of a function aren't cut short anymore
+- A test of the sampler itself, run in CI on Windows
+
 # v0.4.0
 
 - The game's start: the profiler loads before the other mods, the log says how long loading took and each mod's own seconds of it, with where the busiest one spent them. A `[startup]` view in the table, and the start's flame graph from `[save profile]` there
