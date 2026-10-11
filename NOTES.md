@@ -214,6 +214,8 @@ Stage 1 and the whole backlog, then more of my own:
 - 10:32 the last hour: only the version, the changelog, the checks. 10:35 the stage 1 check on v0.8.1: 130 s
   in the main menu, 131 diagnostics lines, no gap, 27.3 us a sample, no crash. 10:40 v0.8.1 released, the
   final one, `.geode` attached by CI.
+- 10:41 a last 40 minute soak on v0.8.1 in a level: 2466 lines, no gap, no crash, memory flat after the
+  PDBs of the start's names were let go.
 ## Numbers
 
 | Check | Samples/s | Suspended avg | Max | Scanned/s | Result |
@@ -240,6 +242,8 @@ Stage 1 and the whole backlog, then more of my own:
 | soak, 17 min, sampling on, table hidden | 999 | 29.1 us | 41.2 us avg in the worst second | 2.7 | 1035 lines, no gap; memory flat (+1 MB); analyzer 0.28% |
 | soak, 40 min in a level, table shown (v0.8.0) | 999 | 29.1 us | 43.2 us avg in the worst second | 1.4 | 2466 lines, no gap, no crash; memory +72 MB: one PDB (49 MB) and the game's ~0.5 MB a minute |
 | rebuild while the game runs | - | - | - | - | `geode build` links (was LNK1201) |
+| v0.8.1, 130 s in the main menu (stage 1 check) | 999 | 27.3 us | 33.5 us avg in the worst second | 14 | 131 lines, no gap, no crash |
+| soak, 40 min in a level, v0.8.1, table hidden | 999 | 29.3 us | 44.2 us avg in the worst second | 1.1 | 2466 lines, no gap, no crash; memory 1.375 GB at the start (the start's names), 1.155 after the PDBs were let go, 1.169 at the end |
 | sampler test (Windows, MSVC and clang) | 1000 | 22-26 us | - | - | 490-499 of 490-499 samples walk the chain, 292-297 of 292-297 deep ones cut at 64 |
 
 ## What didn't work, or only partly
