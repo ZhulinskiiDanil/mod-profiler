@@ -1,3 +1,8 @@
+# v0.8.1
+
+- The hooks are sent once at the start, not twice; the start's line says its own time is the mods' and the hooks'
+- README: how to install, the Russian README complete
+
 # v0.8.0
 
 - The game's memory stays flat: DbgHelp kept every PDB it read for names in memory (230 MB with Geode's and two mods'), they're let go 30 seconds after the last name was looked up
