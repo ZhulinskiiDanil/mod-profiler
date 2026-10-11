@@ -44,6 +44,8 @@ namespace profiler
   void setLoop(uintptr_t loop, std::vector<uintptr_t> frame);
   // One frame drawn, from the main thread
   void frame();
+  // The game went to another scene, named by its layer ("MenuLayer", "PlayLayer")
+  void setScene(std::string name);
   // The mods are loaded and have made their hooks: generated code can be looked up
   void hooksReady();
   // A summary of the time since the last call (or the start) goes to the log at the analyzer's next
@@ -93,6 +95,9 @@ namespace profiler
     // From the profiler's start until the game was loaded, once it's counted (a few seconds after)
     Window startup;
     bool startupReady = false;
+    // Since the game went to the scene it's in
+    Window scene;
+    std::string sceneName;
   };
   // Whether the snapshot needs the names of the busiest places (the table is shown): naming loads
   // PDBs, which isn't done for nobody

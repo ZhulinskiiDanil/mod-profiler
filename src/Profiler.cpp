@@ -40,6 +40,7 @@ namespace
   // A span asked for, under s_mutex: its label
   std::optional<std::string> s_spanLabel;
   std::atomic<bool> s_resetSession{false};
+  std::string s_scene;
   Baseline s_baseline;
   // Geode's hooks are in place: generated code can be looked up from then on
   std::atomic<bool> s_hooksReady{false};
@@ -101,7 +102,14 @@ namespace
     std::optional<std::chrono::steady_clock::time_point> hooksReadyAt;
     bool startupDone = false;
     Window startup;
+
+    // The scene the game is in, and the numbers since it went there
+    std::string scene;
+    Window sceneWindow;
   };
+
+  // A scene shorter than this isn't summed up when the game leaves it
+  constexpr double MIN_SCENE_SECONDS = 3;
 
   // At most this many samples of the start are kept: a minute, about 15 MB at the most
   constexpr size_t MAX_STARTUP_SAMPLES = 60'000;
@@ -609,6 +617,21 @@ namespace
       }
       merge(analyzer.session, window);
       merge(analyzer.span, window);
+
+      // A new scene: the one left is summed up in the log
+      std::string scene;
+      {
+        std::lock_guard lock(s_mutex);
+        scene = s_scene;
+      }
+      if (scene != analyzer.scene)
+      {
+        if (!analyzer.scene.empty() && analyzer.sceneWindow.seconds >= MIN_SCENE_SECONDS && analyzer.sceneWindow.profile.samples() > 0)
+          log::info("Left {}: {}", analyzer.scene, summaryLine(analyzer.sceneWindow, analyzer.buckets, 5));
+        analyzer.scene = scene;
+        analyzer.sceneWindow = {};
+      }
+      merge(analyzer.sceneWindow, window);
       std::optional<std::string> spanLabel;
       {
         std::lock_guard lock(s_mutex);
@@ -643,6 +666,8 @@ namespace
       snapshot->buckets = analyzer.buckets;
       snapshot->names = std::move(names);
       snapshot->slowFrames.assign(analyzer.slowFrames.begin(), analyzer.slowFrames.end());
+      snapshot->scene = analyzer.sceneWindow;
+      snapshot->sceneName = analyzer.scene;
       if (analyzer.startupDone)
       {
         snapshot->startup = analyzer.startup;
@@ -703,6 +728,12 @@ void profiler::setLoop(uintptr_t loop, std::vector<uintptr_t> frame)
   s_loop = loop;
   s_frameFunctions = std::move(frame);
   s_hooksVersion++;
+}
+
+void profiler::setScene(std::string name)
+{
+  std::lock_guard lock(s_mutex);
+  s_scene = std::move(name);
 }
 
 void profiler::frame()

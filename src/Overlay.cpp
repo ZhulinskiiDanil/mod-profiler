@@ -140,13 +140,19 @@ namespace
       auto const& snapshot = *shared;
       // The start isn't counted until a few seconds after the game loaded: until then the session shows
       auto view = m_view == View::Startup && !snapshot.startupReady ? View::Session : m_view;
-      auto const& window = view == View::Recent ? snapshot.recent : view == View::Session ? snapshot.session : snapshot.startup;
+      auto const& window = view == View::Recent    ? snapshot.recent
+                           : view == View::Session ? snapshot.session
+                           : view == View::Scene   ? snapshot.scene
+                                                   : snapshot.startup;
       bool startup = view == View::Startup;
       auto const& baseline = baseline_file::current();
       auto const& profile = window.profile;
       auto samples = profile.samples();
 
-      m_viewButton->setString(m_view == View::Recent ? "[last 5 s]" : m_view == View::Session ? "[session]" : "[startup]");
+      m_viewButton->setString(m_view == View::Recent    ? "[last 5 s]"
+                              : m_view == View::Session ? "[session]"
+                              : m_view == View::Scene   ? "[this scene]"
+                                                        : "[startup]");
       m_ownHeader->setString(startup ? "own s" : "own ms");
       m_baselineButton->setString(baseline.empty() ? "[set baseline]" : "[new baseline]");
       m_clearButton->setVisible(!baseline.empty());
@@ -159,7 +165,9 @@ namespace
         m_title->setString(fmt::format("Mod Profiler   the game's start: {:.1f} s until loaded", window.seconds).c_str());
       else
         m_title->setString(fmt::format("Mod Profiler   {:.0f} fps, {:.2f} ms a frame   {}", fps, frameMillis,
-                                       view == View::Session ? fmt::format("session of {:.0f} s", window.seconds) : std::string("last 5 s"))
+                                       view == View::Session ? fmt::format("session of {:.0f} s", window.seconds)
+                                       : view == View::Scene ? fmt::format("{} for {:.0f} s", snapshot.sceneName, window.seconds)
+                                                             : std::string("last 5 s"))
                                .c_str());
       if (samples == 0)
       {
@@ -279,7 +287,10 @@ namespace
 
     void onView(CCObject*)
     {
-      m_view = m_view == View::Recent ? View::Session : m_view == View::Session ? View::Startup : View::Recent;
+      m_view = m_view == View::Recent    ? View::Scene
+               : m_view == View::Scene   ? View::Session
+               : m_view == View::Session ? View::Startup
+                                         : View::Recent;
       refresh(0);
     }
 
@@ -405,6 +416,7 @@ namespace
     enum class View
     {
       Recent,
+      Scene,
       Session,
       Startup,
     };

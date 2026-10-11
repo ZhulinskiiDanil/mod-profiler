@@ -126,7 +126,22 @@ namespace
   class FrameCounter : public CCObject
   {
   public:
-    void update(float) override { profiler::frame(); }
+    void update(float) override
+    {
+      profiler::frame();
+      // The scene's name when it changes, from its layer. A transition is still the old scene's
+      auto scene = CCDirector::get()->getRunningScene();
+      if (scene == m_scene || !scene || typeinfo_cast<CCTransitionScene*>(scene))
+        return;
+      m_scene = scene;
+      auto children = scene->getChildren();
+      CCObject* layer = children && children->count() ? children->objectAtIndex(0) : scene;
+      profiler::setScene(std::string(getObjectName(layer)));
+    }
+
+  private:
+    // Only compared, never used: it may be gone
+    CCScene* m_scene = nullptr;
   };
 } // namespace
 
