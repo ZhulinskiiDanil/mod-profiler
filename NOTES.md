@@ -14,9 +14,10 @@ Start: **Sun Oct 11 03:33:17 2026** (the first `date` of the run).
 - **Frames in code without unwind info (hook handlers, other mods' trampolines) are crossed by scanning
   the stack** for the next value that points into a known module's code right after a `call`. Those frames
   are marked, and the diagnostics count how many samples needed it.
-- **The modules in the snapshot are pinned** (`GetModuleHandleEx`) so none can be unmapped while the
-  sampler reads its tables. An old snapshot is freed only after the sampler has moved on from it.
-
+- **The modules in the map are pinned** (`GetModuleHandleEx`) so none can be unmapped while the sampler
+  reads its tables. An old map is let go only after the sampler has moved on from it (and kept on a retired
+  list if waiting for that timed out). Every 30 s all pins are let go before the next map, so a DLL some mod
+  unloaded, which only the pins kept, goes away.
 - **Inclusive time alone is misleading, so there is an own time too.** In the first runs Geode was at 96%
   inclusive and Mega Hack at 90%: Geode calls the game's main function from its own start (a patched call),
   and Mega Hack's frame limiter spins in `CCApplication::run` between frames. Both are on the stack all the
@@ -157,6 +158,17 @@ Start: **Sun Oct 11 03:33:17 2026** (the first `date` of the run).
   seconds) reopening a 56 MB PDB. Final fix: a PDB from a build folder is copied once to %TEMP% and the copy
   is loaded. Checked: `geode build` while the game ran links, names still come, the analyzer at 0.40%.
 - 07:30 `functionStart` cached in the map (only the analyzer calls it).
+- 08:04 a 40 minute soak in a level, table shown (v0.6.0): 2466 diagnostics lines, no gap, no crash, 999
+  samples a second, 29.6 us a sample, analyzer 0.40%, 1.4 scanned a second. The game's memory 1.388 GB after
+  a minute, 1.413 after 27, then one step of 49 MB between 07:50 and 07:58, flat after (1.462). A soak with
+  sampling off is the comparison, see below.
+- 08:17 v0.7.0 released (pre-release): rebuilding a mod while the game runs.
+- 08:38 the soak with sampling off (stopped after 20 min): the game at 1.145 GB (1.388 with sampling and the
+  table), +7 MB in 16 min. The difference was DbgHelp keeping the PDBs it read for names (Geode.pdb is 90 MB
+  on disk, a mod's 56 MB), and the 49 MB step in the long soak was one more mod's PDB loaded. Fixed: PDBs are
+  unloaded 30 s after the last name lookup. Checked: the table shown 1.485 GB, hidden 50 s later 1.255 GB.
+- 08:40 zones are frames of their own in exported profiles: `[zone] self test cost` right above its
+  function, 1267 ms of 10 s (0.53 ms a frame for 0.5 ms of work). The start's samples kept their zone too.
 
 ## Numbers
 
@@ -179,3 +191,36 @@ Start: **Sun Oct 11 03:33:17 2026** (the first `date` of the run).
 | cost self test (0.500 ms a frame) | 1000 | - | - | - | measured 0.514 ms a frame (30 s mean, 0.49-0.57 a second) |
 | v0.5.0, start + 20 s menu + 100 s level | 999 | 29.3 us | 40.4 us avg in the worst second | 20 | no gap, no crash |
 | sampler test (Windows, MSVC and clang) | 1000 | 22-26 us | - | - | 490-499 of 490-499 samples walk the chain, 292-297 of 292-297 deep ones cut at 64 |
+
+## What didn't work, or only partly
+
+- **Russian in the game.** GD's bitmap fonts have no Cyrillic; the table and notifications stay English, the
+  README is in both languages.
+- **Clicking the game's own buttons in a check.** Mouse input sent with `SendInput` reached the table's buttons
+  but never pressed the game's Play button. The level checks open the level through the game's API instead
+  (`MOD_PROFILER_SELFTEST=play`).
+- **Hook handlers learned before the game loads.** Addresses in TulipHook's code are looked up only after
+  `GameEvent::Loaded` (the lookup's callback reads a map the main thread writes while mods make hooks), so
+  the start's stacks still go through some handlers by scanning. About 20-30 scanned samples a second in a
+  level come from code that has no unwind info at all (Mega Hack's own trampolines); they're crossed by
+  scanning and marked.
+- **The worst single stop.** Up to 10-20 ms, all of it Windows waiting for the thread to leave a long system
+  call (files read while the game loads). Nothing to do from user mode; the README explains it.
+- **Mega Hack's frame limiter.** It spins on the clock between frames; that's told apart as "between frames",
+  not hidden. Its own time inside frames is still shown.
+- **The game's memory in a long soak** grew by 74 MB over 40 minutes: DbgHelp's PDBs, now let go when unused.
+
+## What I'd do next
+
+- **Geode Index.** The profiler depends on Improved Logger softly, but `geode build` warns it isn't on the
+  Index; publishing Improved Logger there first (or dropping the declared dependency, the header copy is
+  enough) would let the profiler go to the Index.
+- **Learn hook handlers earlier.** Hook creation could be watched (Geode's hook events) so handlers made
+  during loading are learned before the start's samples are counted.
+- **Zones in the exported profile.** A zone could be a frame of its own in the speedscope file.
+- **Other threads.** Geode's async runtime and mods' worker threads could be sampled the same way, with their
+  own table, for mods that stall the main thread by waiting on them.
+- **A frame-time graph** in the table, with the slow frames marked, and clicking one to see its stacks.
+- **A "which mod to remove" view**: inclusive ms a frame per mod, which is what removing it would save.
+- **Mods on Android/macOS**: the sampler is Windows-only (SuspendThread, RtlVirtualUnwind). Android would need
+  a signal-based sampler and libunwind; possible, but its own project.

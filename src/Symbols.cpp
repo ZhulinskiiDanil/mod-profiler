@@ -9,6 +9,7 @@
 #include <ShlObj.h>
 
 #include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <unordered_map>
@@ -27,6 +28,9 @@ namespace
   std::unordered_map<uintptr_t, std::string> s_names;
   // Where copies of PDBs from build folders go, this session's own
   std::wstring s_copies;
+  // When a name was last looked up in the PDBs
+  std::chrono::steady_clock::time_point s_lastUse;
+  constexpr auto KEEP_LOADED = std::chrono::seconds(30);
 
   std::string narrow(wchar_t const* text)
   {
@@ -89,8 +93,13 @@ namespace
 
   // A PDB in a folder that isn't the module's (where a mod was built) is copied, once, and the copy is
   // what DbgHelp opens: it keeps a PDB open, and a mod rebuilt while the game runs couldn't write its own
+  // The copies made this session, by module: loaded again after an unload, they aren't copied again
+  std::unordered_map<uintptr_t, std::wstring> s_copied;
+
   std::wstring copyOfBuildPdb(MappedModule const& module, std::wstring const& modulePath)
   {
+    if (auto known = s_copied.find(module.base); known != s_copied.end())
+      return known->second;
     auto pdb = codeViewPath(module);
     if (pdb.empty() || GetFileAttributesW(pdb.c_str()) == INVALID_FILE_ATTRIBUTES ||
         _wcsicmp(folderOf(pdb).c_str(), folderOf(modulePath).c_str()) == 0)
@@ -110,6 +119,7 @@ namespace
     auto copy = folder + pdb.substr(pdb.find_last_of(L"\\/") + 1);
     if (!CopyFileW(pdb.c_str(), copy.c_str(), FALSE))
       return {};
+    s_copied[module.base] = folder;
     return folder;
   }
 
@@ -148,6 +158,7 @@ std::string symbols::name(uintptr_t address, MappedModule const& module)
     return known->second;
 
   load(module);
+  s_lastUse = std::chrono::steady_clock::now();
   alignas(SYMBOL_INFOW) char buffer[sizeof(SYMBOL_INFOW) + MAX_SYM_NAME * sizeof(wchar_t)] = {};
   auto symbol = reinterpret_cast<SYMBOL_INFOW*>(buffer);
   symbol->SizeOfStruct = sizeof(SYMBOL_INFOW);
@@ -172,6 +183,15 @@ std::string symbols::name(uintptr_t address, MappedModule const& module)
 }
 
 void symbols::setEnabled(bool enabled) { s_enabled = enabled; }
+
+void symbols::tick()
+{
+  if (!s_ready || s_loaded.empty() || std::chrono::steady_clock::now() - s_lastUse < KEEP_LOADED)
+    return;
+  for (auto base : s_loaded)
+    SymUnloadModule64(SESSION, base);
+  s_loaded.clear();
+}
 
 void symbols::cleanUp()
 {

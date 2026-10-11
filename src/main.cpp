@@ -239,9 +239,13 @@ $on_game(Loaded)
   auto selfTest = GetEnvironmentVariableA("MOD_PROFILER_SELFTEST", value, sizeof(value)) ? std::string(value) : std::string();
   if (selfTest == "hang")
     CCDirector::get()->getScheduler()->scheduleSelector(schedule_selector(SelfTest::hang), new SelfTest(), 0, 0, 30, false);
-  // Every frame, from 20 seconds in
+  // Every frame, from 20 seconds in, then a profile with the zone in it
   if (selfTest == "cost")
-    CCDirector::get()->getScheduler()->scheduleSelector(schedule_selector(SelfTest::cost), new SelfTest(), 0, kCCRepeatForever, 20, false);
+  {
+    auto test = new SelfTest();
+    CCDirector::get()->getScheduler()->scheduleSelector(schedule_selector(SelfTest::cost), test, 0, kCCRepeatForever, 20, false);
+    CCDirector::get()->getScheduler()->scheduleSelector(schedule_selector(SelfTest::save), test, 0, 0, 35, false);
+  }
   if (selfTest == "deadlock")
     CCDirector::get()->getScheduler()->scheduleSelector(schedule_selector(SelfTest::deadlock), new SelfTest(), 0, 0, 30, false);
   if (selfTest == "1" || selfTest == "play")

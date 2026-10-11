@@ -5,6 +5,7 @@
 #include "Speedscope.hpp"
 #include "Spikes.hpp"
 #include "Symbols.hpp"
+#include "ZonesApi.hpp"
 
 #include <Geode/Geode.hpp>
 
@@ -107,6 +108,7 @@ namespace
     {
       int64_t time = 0;
       uint16_t depth = 0;
+      uint16_t zone = 0;
       // Into startupFrames
       size_t first = 0;
     };
@@ -135,7 +137,7 @@ namespace
     if (analyzer.startupDone || sample.depth == 0 || (loaded && sample.time >= loaded) ||
         analyzer.startupFrames.size() + sample.depth > MAX_STARTUP_FRAMES)
       return;
-    analyzer.startupSamples.push_back({sample.time, sample.depth, analyzer.startupFrames.size()});
+    analyzer.startupSamples.push_back({sample.time, sample.depth, sample.zone, analyzer.startupFrames.size()});
     analyzer.startupFrames.insert(analyzer.startupFrames.end(), sample.frames, sample.frames + std::min<int>(sample.depth, MAX_FRAMES));
   }
 
@@ -199,6 +201,29 @@ namespace
       return index;
     };
 
+    struct ZoneFrame
+    {
+      std::optional<uint32_t> frame;
+      uint32_t bucket = UINT32_MAX;
+    };
+    std::unordered_map<uint16_t, ZoneFrame> zoneFrames;
+    auto zoneFrameFor = [&](uint16_t id) -> ZoneFrame
+    {
+      if (auto known = zoneFrames.find(id); known != zoneFrames.end())
+        return known->second;
+      auto name = zones::registry().nameOf(id);
+      ZoneFrame zone;
+      if (!name.name.empty())
+      {
+        zone.frame = static_cast<uint32_t>(profile.frames.size());
+        profile.frames.push_back({"[zone] " + name.name, name.mod});
+        auto bucket = analyzer.buckets.find(name.mod);
+        zone.bucket = bucket < 0 ? UINT32_MAX : static_cast<uint32_t>(bucket);
+      }
+      zoneFrames[id] = zone;
+      return zone;
+    };
+
     auto ticksPerMilli = sampler::ticksPerSecond() / 1000.0;
     for (size_t i = 0; i < count; i++)
     {
@@ -206,8 +231,22 @@ namespace
       if (sample.depth == 0)
         continue;
       std::vector<uint32_t> stack;
+      // A zone is a frame of its own, right above the outermost frame of its mod: everything the mod did
+      // in it is under it
+      auto zone = sample.zone ? zoneFrameFor(sample.zone) : ZoneFrame{};
+      bool zonePlaced = !zone.frame;
       for (int frame = std::min<int>(sample.depth, MAX_FRAMES) - 1; frame >= 0; frame--)
+      {
+        if (!zonePlaced && analyzer.map->bucketOf(frame == 0 ? sample.frames[0] : sample.frames[frame] - 1) == zone.bucket)
+        {
+          stack.push_back(*zone.frame);
+          zonePlaced = true;
+        }
         stack.push_back(frameFor(sample.frames[frame], frame == 0));
+      }
+      // Its mod isn't on the stack (Geode's code in a zone): above the innermost frame
+      if (!zonePlaced)
+        stack.insert(stack.end() - 1, *zone.frame);
       auto time = sample.time;
       // A sample stands for the time until the next one, a few intervals at most (the sampler can be late)
       double weight = 1;
@@ -225,6 +264,7 @@ namespace
     auto const& kept = analyzer.startupSamples[index];
     into.time = kept.time;
     into.depth = kept.depth;
+    into.zone = kept.zone;
     std::copy_n(analyzer.startupFrames.begin() + kept.first, kept.depth, into.frames);
     return into;
   }
@@ -813,6 +853,7 @@ namespace
       }
       old.reset();
       freeRetired(analyzer);
+      symbols::tick();
 
     }
   }

@@ -15,4 +15,7 @@ namespace symbols
   // Removes the PDB copies of earlier sessions (a PDB from a build folder is read from a copy, so a mod
   // can be rebuilt while the game runs). Any thread, before the first name
   void cleanUp();
+  // Once a second: PDBs no name was asked of for a while are let go. DbgHelp keeps a loaded PDB in memory
+  // (Geode.pdb alone is 90 MB on disk), and the names found stay known
+  void tick();
 } // namespace symbols
