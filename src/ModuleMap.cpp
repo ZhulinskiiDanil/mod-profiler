@@ -104,21 +104,32 @@ uint32_t ModuleMap::bucketOf(uintptr_t address) const noexcept
   return index < 0 ? bucket::OTHER : m_modules[index].bucket;
 }
 
-uintptr_t ModuleMap::functionStart(uintptr_t address) const noexcept
+uintptr_t ModuleMap::functionStart(uintptr_t address) const
 {
+  if (auto known = m_starts.find(address); known != m_starts.end())
+    return known->second;
+  // Bounded: generated or moving code could make it grow
+  if (m_starts.size() > 200'000)
+    m_starts.clear();
+
+  uintptr_t start = 0;
   auto index = findImage(address);
-  if (index < 0)
-    return 0;
-  auto const& module = m_modules[index];
-  auto entry = findFunction(module.functions, module.functionCount, static_cast<uint32_t>(address - module.base));
-  if (entry < 0)
-    return 0;
-  auto function = module.functions + entry * 3;
-  // An entry pointing at another one: the RVA has its low bit set
-  if (function[2] & 1)
-    return module.base + function[0];
-  auto begin = unwind::functionBegin(reinterpret_cast<uint8_t const*>(module.base), module.size, function[0], function[2]);
-  return module.base + begin;
+  if (index >= 0)
+  {
+    auto const& module = m_modules[index];
+    auto entry = findFunction(module.functions, module.functionCount, static_cast<uint32_t>(address - module.base));
+    if (entry >= 0)
+    {
+      auto function = module.functions + entry * 3;
+      // An entry pointing at another one: the RVA has its low bit set
+      if (function[2] & 1)
+        start = module.base + function[0];
+      else
+        start = module.base + unwind::functionBegin(reinterpret_cast<uint8_t const*>(module.base), module.size, function[0], function[2]);
+    }
+  }
+  m_starts.emplace(address, start);
+  return start;
 }
 
 // ! --- Function tables --- !

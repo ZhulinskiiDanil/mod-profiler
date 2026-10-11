@@ -146,6 +146,18 @@ Start: **Sun Oct 11 03:33:17 2026** (the first `date` of the run).
   wrong with sampling turned on late, Geode's bucket possibly missing, the old snapshot freed under the
   lock, the start's memory estimate. Checked again after: sampler test, a level, the cost test (0.512 ms).
 
+- 07:25 a test for the hook handler rule (review gap): the sampler test builds a handler the way TulipHook
+  does (`push rbp; mov rbp, rsp; sub rsp, 0xc0`, unwind info for that, then `sub rsp, 0x40` and a call),
+  registers it with `RtlAddFunctionTable`, learns it and walks through it. It found a real bug: 0 of 233
+  samples. For return addresses the epilog check looked at the bytes after the call (`add rsp, 0x40`) and
+  skipped the frame-pointer rule. Fixed: the epilog check is for the first frame only; 292-294 of 292-294.
+- 07:28 `geode build` failed while the game ran: `LNK1201`, the PDB locked. The profiler's DbgHelp had it
+  open, it names the profiler's own functions. A mod developer rebuilding their mod with the game open
+  would hit the same. First fix: close those PDBs every second; that cost 2% of a core (15-18% in some
+  seconds) reopening a 56 MB PDB. Final fix: a PDB from a build folder is copied once to %TEMP% and the copy
+  is loaded. Checked: `geode build` while the game ran links, names still come, the analyzer at 0.40%.
+- 07:30 `functionStart` cached in the map (only the analyzer calls it).
+
 ## Numbers
 
 | Check | Samples/s | Suspended avg | Max | Scanned/s | Result |

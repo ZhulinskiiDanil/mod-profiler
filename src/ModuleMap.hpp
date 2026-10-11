@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 // The buckets the time is split into: the game, cocos, everything else, the code Geode's hooks
@@ -82,8 +83,9 @@ public:
   // The bucket the address counts for: OTHER outside every module
   uint32_t bucketOf(uintptr_t address) const noexcept;
   // Where the function holding the address starts, from the function table: 0 for a leaf function
-  // (no entry) or outside every module. Reads the image's unwind info, so not while sampling
-  uintptr_t functionStart(uintptr_t address) const noexcept;
+  // (no entry) or outside every module. Reads the image's unwind info, so not while sampling. Cached:
+  // only one thread may call it (the analyzer; the sampler never does)
+  uintptr_t functionStart(uintptr_t address) const;
 
   MappedModule const& module(size_t index) const { return m_modules[index]; }
   size_t moduleCount() const { return m_modules.size(); }
@@ -94,6 +96,8 @@ private:
   std::vector<CodeRange> m_code;
   // Module indices sorted by base
   std::vector<uint32_t> m_byBase;
+  // functionStart's answers: the same return addresses come back in every sample
+  mutable std::unordered_map<uintptr_t, uintptr_t> m_starts;
 };
 
 // The index of the entry in a RUNTIME_FUNCTION table (3 RVAs an entry) whose range holds `rva`, or -1

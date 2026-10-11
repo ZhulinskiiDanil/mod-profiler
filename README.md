@@ -48,7 +48,7 @@ Every sample is one moment of the main thread. The table adds up the last 5 seco
 For the mod picked in the table:
 
 - **Under its hooks of**: the hooked functions its own time is under, like `cocos2d::CCEGLView::swapBuffers` for a mod drawing over the game
-- **In its functions**: where its own time is spent, by function. Names come from the mod's PDB (a mod built on this computer has one where it was built), `Geode.pdb`, or the export table. Otherwise `module+offset`
+- **In its functions**: where its own time is spent, by function. Names come from the mod's PDB (a mod built on this computer has one where it was built), `Geode.pdb`, or the export table. Otherwise `module+offset`. A PDB from a build folder is read from a copy in `%TEMP%`, so the mod can be rebuilt while the game runs (the next start removes the copies)
 
 ## The log
 

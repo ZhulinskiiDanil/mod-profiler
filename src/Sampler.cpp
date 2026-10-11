@@ -71,7 +71,9 @@ namespace
   }
 
   // One frame up, with the function table of the module the address is in. False when it can't go on
-  bool unwindFrame(CONTEXT& context, ModuleMap const& map, int index, uintptr_t lookup, Bounds bounds) noexcept
+  // `first`: the frame the thread is in. The others are return addresses: their thread is in a call, never
+  // in their epilog, whatever the bytes after the call look like
+  bool unwindFrame(CONTEXT& context, ModuleMap const& map, int index, uintptr_t lookup, Bounds bounds, bool first) noexcept
   {
     auto const& module = map.module(index);
     auto sp = context.Rsp;
@@ -109,7 +111,7 @@ namespace
       auto offset = rva - begin;
       auto pc = reinterpret_cast<uint8_t const*>(context.Rip);
       auto available = std::min<uintptr_t>(8, module.base + module.size - context.Rip);
-      if (prolog >= 0 && offset >= static_cast<uint32_t>(prolog) && !unwind::isFramePointerEpilog(pc, available) &&
+      if (prolog >= 0 && offset >= static_cast<uint32_t>(prolog) && !(first && unwind::isFramePointerEpilog(pc, available)) &&
           bounds.holds(context.Rbp, 16) && context.Rbp >= sp)
       {
         auto frame = reinterpret_cast<uintptr_t const*>(context.Rbp);
@@ -174,7 +176,7 @@ namespace
         sample.flags |= SAMPLE_SCANNED;
         continue;
       }
-      if (!unwindFrame(context, map, index, lookup, bounds))
+      if (!unwindFrame(context, map, index, lookup, bounds, sample.depth == 1))
         return;
       // Every frame is above the last one, or the walk is lost
       if (context.Rsp <= sp || context.Rsp > bounds.high)

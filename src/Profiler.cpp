@@ -670,6 +670,7 @@ namespace
   void run()
   {
     utils::thread::setName("Mod Profiler");
+    symbols::cleanUp();
     Analyzer analyzer;
 
     auto last = std::chrono::steady_clock::now();

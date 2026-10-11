@@ -26,6 +26,11 @@ The profiler loads before the other mods, and the log says how long the game too
 - <cy>Ctrl+Shift+O</c> saves the last 10 seconds of stacks for <cy>speedscope.app</c>, a flame graph of everything the game's main thread did
 - With **Improved Logger**, the numbers are pinned in its console, and its marker key (<cy>Ctrl+Shift+M</c>) logs the profile since the last marker
 
+## For mod developers
+
+- Your mod's functions are named from its PDB when it was built on this computer, and rebuilding it while the game runs works: the profiler doesn't keep your PDB open
+- **Zones**: `mod_profiler::Zone zone("hair simulation");` in your code (copy `include/ModProfiler.hpp` from the GitHub repo) and the table shows that zone's ms a frame under your mod. Without Mod Profiler a zone does nothing
+
 ## How
 
 About once a millisecond the profiler stops the game's main thread for a few microseconds, reads its call stack and lets it go. While the thread is stopped it only reads: no memory is allocated, nothing is logged or locked, so it can't freeze the game. At the default settings a frame takes about 2.6% longer.

@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstring>
 #include <chrono>
 #include <thread>
 #include <vector>
@@ -55,6 +56,63 @@ extern "C" __declspec(noinline) void deep(int depth)
     level3();
   else
     deep(depth - 1);
+  s_sink = s_sink + 1;
+}
+
+// ! --- A hook handler, made the way TulipHook makes them --- !
+
+// push rbp; mov rbp, rsp; sub rsp, 0xc0, with unwind info for just that, then what a calling convention
+// adds to the stack (sub rsp, 0x40) and a call: unwinding it by its info alone reads the wrong slot
+struct Handler
+{
+  uint8_t* code = nullptr;
+  RUNTIME_FUNCTION* entry = nullptr;
+
+  explicit Handler(void (*target)())
+  {
+    code = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+    uint8_t body[] = {
+        0x55,                                     // push rbp
+        0x48, 0x89, 0xE5,                         // mov rbp, rsp
+        0x48, 0x81, 0xEC, 0xC0, 0x00, 0x00, 0x00, // sub rsp, 0xc0 (the prolog ends here, at 11)
+        0x48, 0x83, 0xEC, 0x40,                   // sub rsp, 0x40
+        0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0,       // mov rax, target
+        0xFF, 0xD0,                               // call rax
+        0x48, 0x83, 0xC4, 0x40,                   // add rsp, 0x40
+        0x48, 0x81, 0xC4, 0xC0, 0x00, 0x00, 0x00, // add rsp, 0xc0
+        0x5D,                                     // pop rbp
+        0xC3,                                     // ret
+    };
+    auto address = reinterpret_cast<uint64_t>(target);
+    std::memcpy(body + 17, &address, sizeof(address));
+    std::memcpy(code, body, sizeof(body));
+
+    // UNWIND_INFO at 0x100: version 1, prolog 11, 3 slots: sub rsp 0xc0 (ALLOC_LARGE, /8), push rbp
+    uint8_t info[] = {0x01, 11, 3, 0x00, 11, 0x01, 0xC0 / 8, 0x00, 1, 0x50};
+    std::memcpy(code + 0x100, info, sizeof(info));
+    entry = reinterpret_cast<RUNTIME_FUNCTION*>(code + 0x200);
+    entry->BeginAddress = 0;
+    entry->EndAddress = sizeof(body);
+    entry->UnwindData = 0x100;
+    RtlAddFunctionTable(entry, 1, reinterpret_cast<DWORD64>(code));
+    FlushInstructionCache(GetCurrentProcess(), code, 0x1000);
+  }
+
+  ~Handler()
+  {
+    RtlDeleteFunctionTable(entry);
+    VirtualFree(code, 0, MEM_RELEASE);
+  }
+
+  void call() const { reinterpret_cast<void (*)()>(code)(); }
+};
+
+static Handler* s_handler = nullptr;
+
+// Called through the handler, like a mod's detour
+extern "C" __declspec(noinline) void throughHandler()
+{
+  s_handler->call();
   s_sink = s_sink + 1;
 }
 
@@ -104,6 +162,10 @@ static std::vector<uintptr_t> starts(Sample const& sample, ModuleMap const& map)
 
 int main()
 {
+  // The handler calls level2: level3 under it, throughHandler above it
+  Handler handler(level2);
+  s_handler = &handler;
+
   // The thread captures itself as "the main thread", then waits in the chain
   std::atomic<bool> captured{false};
   std::thread target([&]
@@ -111,7 +173,8 @@ int main()
                        sampler::captureMainThread();
                        captured = true;
                        level1();
-                       deep(200); });
+                       deep(200);
+                       throughHandler(); });
   while (!captured)
     std::this_thread::yield();
 
@@ -179,6 +242,44 @@ int main()
   CHECK(samples.size() > 100);
   CHECK(truncated == samples.size());
 
+  // ! --- Through generated code --- !
+  // The handler is learned like TulipHook's: looked up in the system's function tables, in a new map
+  s_phase = 2;
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  auto learned = modules::learn(reinterpret_cast<uintptr_t>(s_handler->code) + 0x20);
+  CHECK(learned.has_value());
+  auto handlerMap = modules::build(modules::loaded(), {}, {*learned}, session.buckets);
+  session.current = handlerMap.get();
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  while (session.ring.peek())
+    session.ring.pop();
+  samples = session.collect(std::chrono::milliseconds(300));
+  auto fthrough = address(throughHandler);
+  auto handlerStart = reinterpret_cast<uintptr_t>(s_handler->code);
+  size_t through = 0;
+  for (auto const& sample : samples)
+  {
+    auto frames = starts(sample, *handlerMap);
+    auto at = std::find(frames.begin(), frames.end(), f3);
+    // level3, level2, the handler, throughHandler: the frame under the handler is found exactly
+    // (Handler::call may be a frame of its own between them, without optimizations)
+    if (at - frames.begin() <= 2 && frames.end() - at >= 5 && at[1] == f2 && at[2] == handlerStart &&
+        (at[3] == fthrough || at[4] == fthrough))
+      through++;
+    else if (through == 0 && &sample == &samples.front())
+    {
+      std::printf("  not through (flags %d):", sample.flags);
+      for (int i = 0; i < sample.depth && i < 7; i++)
+        std::printf(" %s", describeAddress(sample.frames[i], *handlerMap).c_str());
+      std::printf("\n");
+    }
+  }
+  std::printf("through a hook handler: %zu of %zu samples\n", through, samples.size());
+  CHECK(samples.size() > 100);
+  CHECK(through == samples.size());
+  session.current = session.map.get();
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
   // ! --- Stopping --- !
   sampler::stop();
   CHECK(!sampler::running());
@@ -188,8 +289,9 @@ int main()
     session.ring.pop();
   std::this_thread::sleep_for(std::chrono::milliseconds(20));
   CHECK(session.ring.peek() == nullptr);
-  s_phase = 2;
+  s_phase = 3;
   target.join();
+  modules::release(*handlerMap);
   modules::release(*session.map);
   return finish("sampler");
 }

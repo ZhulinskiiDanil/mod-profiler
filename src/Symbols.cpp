@@ -6,8 +6,11 @@
 #include <Windows.h>
 #include <DbgHelp.h>
 
+#include <ShlObj.h>
+
 #include <atomic>
 #include <cstdio>
+#include <cstring>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -22,6 +25,8 @@ namespace
   bool s_failed = false;
   std::unordered_set<uintptr_t> s_loaded;
   std::unordered_map<uintptr_t, std::string> s_names;
+  // Where copies of PDBs from build folders go, this session's own
+  std::wstring s_copies;
 
   std::string narrow(wchar_t const* text)
   {
@@ -44,6 +49,70 @@ namespace
     return s_ready;
   }
 
+  std::wstring widen(char const* text)
+  {
+    auto size = MultiByteToWideChar(CP_UTF8, 0, text, -1, nullptr, 0);
+    if (size <= 1)
+      return {};
+    std::wstring result(size - 1, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, text, -1, result.data(), size);
+    return result;
+  }
+
+  std::wstring folderOf(std::wstring const& path) { return path.substr(0, path.find_last_of(L"\\/") + 1); }
+
+  // The PDB path the linker wrote into the image (its CodeView record), or empty
+  std::wstring codeViewPath(MappedModule const& module)
+  {
+    auto base = module.base;
+    auto dos = reinterpret_cast<IMAGE_DOS_HEADER const*>(base);
+    auto nt = reinterpret_cast<IMAGE_NT_HEADERS64 const*>(base + dos->e_lfanew);
+    auto const& directory = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG];
+    if (nt->OptionalHeader.NumberOfRvaAndSizes <= IMAGE_DIRECTORY_ENTRY_DEBUG || !directory.VirtualAddress ||
+        directory.VirtualAddress + static_cast<uint64_t>(directory.Size) > module.size)
+      return {};
+    auto entries = reinterpret_cast<IMAGE_DEBUG_DIRECTORY const*>(base + directory.VirtualAddress);
+    for (size_t i = 0; i < directory.Size / sizeof(IMAGE_DEBUG_DIRECTORY); i++)
+    {
+      auto const& entry = entries[i];
+      // "RSDS", a GUID, an age, then the path
+      if (entry.Type != IMAGE_DEBUG_TYPE_CODEVIEW || !entry.AddressOfRawData || entry.SizeOfData < 25 ||
+          entry.AddressOfRawData + static_cast<uint64_t>(entry.SizeOfData) > module.size)
+        continue;
+      auto data = reinterpret_cast<char const*>(base + entry.AddressOfRawData);
+      if (std::memcmp(data, "RSDS", 4) != 0 || data[entry.SizeOfData - 1] != '\0')
+        continue;
+      return widen(data + 24);
+    }
+    return {};
+  }
+
+  // A PDB in a folder that isn't the module's (where a mod was built) is copied, once, and the copy is
+  // what DbgHelp opens: it keeps a PDB open, and a mod rebuilt while the game runs couldn't write its own
+  std::wstring copyOfBuildPdb(MappedModule const& module, std::wstring const& modulePath)
+  {
+    auto pdb = codeViewPath(module);
+    if (pdb.empty() || GetFileAttributesW(pdb.c_str()) == INVALID_FILE_ATTRIBUTES ||
+        _wcsicmp(folderOf(pdb).c_str(), folderOf(modulePath).c_str()) == 0)
+      return {};
+    if (s_copies.empty())
+    {
+      wchar_t temp[MAX_PATH];
+      if (!GetTempPathW(MAX_PATH, temp))
+        return {};
+      s_copies = std::wstring(temp) + L"zhulis.mod-profiler\\pdb-" + std::to_wstring(GetCurrentProcessId()) + L"\\";
+    }
+    // One folder a module, named like the PDB inside: DbgHelp finds it there by name
+    char base[32];
+    std::snprintf(base, sizeof(base), "%llx", static_cast<unsigned long long>(module.base));
+    auto folder = s_copies + widen(base) + L"\\";
+    SHCreateDirectoryExW(nullptr, folder.c_str(), nullptr);
+    auto copy = folder + pdb.substr(pdb.find_last_of(L"\\/") + 1);
+    if (!CopyFileW(pdb.c_str(), copy.c_str(), FALSE))
+      return {};
+    return folder;
+  }
+
   void load(MappedModule const& module)
   {
     if (!s_loaded.insert(module.base).second || !module.handle)
@@ -52,7 +121,22 @@ namespace
     auto length = GetModuleFileNameW(static_cast<HMODULE>(module.handle), path, static_cast<DWORD>(std::size(path)));
     if (length == 0 || length >= std::size(path))
       return;
+
+    auto copied = copyOfBuildPdb(module, path);
+    if (copied.empty())
+    {
+      // Next to the DLL (Geode's in the game's folder), or none: as it is
+      SymLoadModuleExW(SESSION, nullptr, path, nullptr, module.base, static_cast<DWORD>(module.size), nullptr, 0);
+      return;
+    }
+    // The copy only: the path in the image is ignored, the copy's folder searched, and loaded right now
+    // (deferred, it would be looked for later with other options)
+    auto options = SymGetOptions();
+    SymSetOptions((options | SYMOPT_IGNORE_CVREC) & ~SYMOPT_DEFERRED_LOADS);
+    SymSetSearchPathW(SESSION, copied.c_str());
     SymLoadModuleExW(SESSION, nullptr, path, nullptr, module.base, static_cast<DWORD>(module.size), nullptr, 0);
+    SymSetSearchPathW(SESSION, L"");
+    SymSetOptions(options);
   }
 } // namespace
 
@@ -88,3 +172,45 @@ std::string symbols::name(uintptr_t address, MappedModule const& module)
 }
 
 void symbols::setEnabled(bool enabled) { s_enabled = enabled; }
+
+void symbols::cleanUp()
+{
+  // Copies from earlier sessions: this one's folder is made again when needed
+  wchar_t temp[MAX_PATH];
+  if (!GetTempPathW(MAX_PATH, temp))
+    return;
+  auto root = std::wstring(temp) + L"zhulis.mod-profiler\\";
+  WIN32_FIND_DATAW found;
+  auto search = FindFirstFileW((root + L"pdb-*").c_str(), &found);
+  if (search == INVALID_HANDLE_VALUE)
+    return;
+  do
+  {
+    // Another game still running has its copies open: those can't go, and stay
+    auto folder = root + found.cFileName + L"\\";
+    WIN32_FIND_DATAW inner;
+    auto modules = FindFirstFileW((folder + L"*").c_str(), &inner);
+    if (modules != INVALID_HANDLE_VALUE)
+    {
+      do
+      {
+        if (inner.cFileName[0] == L'.')
+          continue;
+        auto moduleFolder = folder + inner.cFileName + L"\\";
+        WIN32_FIND_DATAW file;
+        auto files = FindFirstFileW((moduleFolder + L"*.pdb").c_str(), &file);
+        if (files != INVALID_HANDLE_VALUE)
+        {
+          do
+            DeleteFileW((moduleFolder + file.cFileName).c_str());
+          while (FindNextFileW(files, &file));
+          FindClose(files);
+        }
+        RemoveDirectoryW(moduleFolder.c_str());
+      } while (FindNextFileW(modules, &inner));
+      FindClose(modules);
+    }
+    RemoveDirectoryW(folder.c_str());
+  } while (FindNextFileW(search, &found));
+  FindClose(search);
+}

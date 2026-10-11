@@ -25,4 +25,4 @@ add_subdirectory($ENV{GEODE_SDK} ${CMAKE_CURRENT_BINARY_DIR}/geode)
 setup_geode_mod(${PROJECT_NAME})
 
 # Function names from PDBs
-target_link_libraries(${PROJECT_NAME} dbghelp)
+target_link_libraries(${PROJECT_NAME} dbghelp shell32)
