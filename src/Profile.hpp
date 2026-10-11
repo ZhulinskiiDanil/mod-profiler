@@ -1,6 +1,7 @@
 #pragma once
 
 // Counting samples into buckets, and the line the diagnostics log, without Windows or Geode in it
+#include "Attribution.hpp"
 #include "ModuleMap.hpp"
 #include "Sample.hpp"
 
@@ -14,16 +15,22 @@ struct BucketTime
   uint64_t inclusive = 0;
   // Samples where the thread was in the bucket's own code
   uint64_t self = 0;
+  // Samples that are the mod's own work, see Attribution.hpp
+  uint64_t own = 0;
 };
 
 class Profile
 {
 public:
-  void add(Sample const& sample, ModuleMap const& map);
+  // Without an attribution there's no own time and no idle
+  void add(Sample const& sample, ModuleMap const& map, Attribution const* attribution = nullptr);
   void merge(Profile const& other);
   void clear();
 
   uint64_t samples() const { return m_samples; }
+  // Samples where the thread was waiting, and where it was in the loop between frames
+  uint64_t idle() const { return m_idle; }
+  uint64_t between() const { return m_between; }
   // Indexed by bucket, may be shorter than the bucket list: the missing ones are zero
   std::vector<BucketTime> const& buckets() const { return m_buckets; }
   BucketTime at(uint32_t bucket) const { return bucket < m_buckets.size() ? m_buckets[bucket] : BucketTime{}; }
@@ -35,6 +42,8 @@ private:
   // The last sample each bucket was counted in, so a recursive mod counts once
   std::vector<uint64_t> m_seen;
   uint64_t m_samples = 0;
+  uint64_t m_idle = 0;
+  uint64_t m_between = 0;
 };
 
 // How the sampler itself did
@@ -71,12 +80,20 @@ struct Share
   uint32_t bucket = 0;
   double inclusivePercent = 0;
   double selfPercent = 0;
+  double ownPercent = 0;
   // Of a frame on average, 0 when the frame count is unknown
   double inclusiveMillisPerFrame = 0;
+  double ownMillisPerFrame = 0;
 };
 
-// Mods sorted by their inclusive share, at most `limit` of them, none with zero samples
-std::vector<Share> topMods(Window const& window, size_t limit);
+enum class Order
+{
+  Inclusive,
+  Own,
+};
+
+// Mods sorted by a share, at most `limit` of them, none that never was on the stack
+std::vector<Share> topMods(Window const& window, size_t limit, Order order = Order::Inclusive);
 Share shareOf(Window const& window, uint32_t bucket);
 
 // "GeometryDash.exe+0x1a2b3c", or the bare address outside every module

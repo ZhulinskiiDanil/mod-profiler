@@ -13,14 +13,17 @@ add_executable(ring-tests RingTests.cpp)
 target_link_libraries(ring-tests Threads::Threads)
 add_test(NAME ring COMMAND ring-tests)
 
-add_executable(modulemap-tests ModuleMapTests.cpp ../src/ModuleMap.cpp)
+add_executable(modulemap-tests ModuleMapTests.cpp ../src/ModuleMap.cpp ../src/Unwind.cpp)
 add_test(NAME modulemap COMMAND modulemap-tests)
 
 add_executable(code-tests CodeTests.cpp ../src/Code.cpp)
 add_test(NAME code COMMAND code-tests)
 
-add_executable(profile-tests ProfileTests.cpp ../src/Profile.cpp ../src/ModuleMap.cpp)
+add_executable(profile-tests ProfileTests.cpp ../src/Profile.cpp ../src/ModuleMap.cpp ../src/Attribution.cpp ../src/Unwind.cpp)
 add_test(NAME profile COMMAND profile-tests)
 
 add_executable(unwind-tests UnwindTests.cpp ../src/Unwind.cpp)
 add_test(NAME unwind COMMAND unwind-tests)
+
+add_executable(attribution-tests AttributionTests.cpp ../src/Attribution.cpp ../src/ModuleMap.cpp ../src/Unwind.cpp)
+add_test(NAME attribution COMMAND attribution-tests)

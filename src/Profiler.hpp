@@ -21,8 +21,20 @@ namespace profiler
   bool start(Options const& options);
   void setOptions(Options const& options);
   void setMods(std::vector<modules::ModBinary> mods);
+
+  struct HookInfo
+  {
+    std::string mod;
+    uintptr_t target = 0;
+    uintptr_t detour = 0;
+  };
+  void setHooks(std::vector<HookInfo> hooks);
+  // The game's loop and the functions of it that make a frame, for telling the time between frames
+  void setLoop(uintptr_t loop, std::vector<uintptr_t> frame);
   // One frame drawn, from the main thread
   void frame();
+  // The mods are loaded and have made their hooks: generated code can be looked up
+  void hooksReady();
 
   struct Snapshot
   {

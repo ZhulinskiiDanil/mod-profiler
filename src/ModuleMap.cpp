@@ -1,5 +1,7 @@
 #include "ModuleMap.hpp"
 
+#include "Unwind.hpp"
+
 #include <algorithm>
 
 // ! --- Buckets --- !
@@ -10,6 +12,7 @@ Buckets::Buckets()
       {"GeometryDash.exe", "Geometry Dash"},
       {"libcocos2d.dll", "Cocos2d"},
       {"other", "Other"},
+      {"hooks", "Hook handlers"},
   };
 }
 
@@ -45,6 +48,13 @@ ModuleMap::ModuleMap(std::vector<MappedModule> modules, std::vector<CodeRange> c
                 { return range.end <= range.begin || range.module >= m_modules.size(); });
   std::sort(m_code.begin(), m_code.end(), [](auto const& a, auto const& b)
             { return a.begin < b.begin; });
+
+  for (auto& module : m_modules)
+    if (!module.ownFunctions.empty())
+    {
+      module.functions = module.ownFunctions.data();
+      module.functionCount = module.ownFunctions.size() / 3;
+    }
 
   for (uint32_t i = 0; i < m_modules.size(); i++)
     m_byBase.push_back(i);
@@ -91,6 +101,23 @@ uint32_t ModuleMap::bucketOf(uintptr_t address) const noexcept
 {
   auto index = findImage(address);
   return index < 0 ? bucket::OTHER : m_modules[index].bucket;
+}
+
+uintptr_t ModuleMap::functionStart(uintptr_t address) const noexcept
+{
+  auto index = findImage(address);
+  if (index < 0)
+    return 0;
+  auto const& module = m_modules[index];
+  auto entry = findFunction(module.functions, module.functionCount, static_cast<uint32_t>(address - module.base));
+  if (entry < 0)
+    return 0;
+  auto function = module.functions + entry * 3;
+  // An entry pointing at another one: the RVA has its low bit set
+  if (function[2] & 1)
+    return module.base + function[0];
+  auto begin = unwind::functionBegin(reinterpret_cast<uint8_t const*>(module.base), module.size, function[0], function[2]);
+  return module.base + begin;
 }
 
 // ! --- Function tables --- !

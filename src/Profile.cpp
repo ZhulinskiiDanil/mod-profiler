@@ -15,12 +15,23 @@ BucketTime& Profile::grow(uint32_t bucket)
   return m_buckets[bucket];
 }
 
-void Profile::add(Sample const& sample, ModuleMap const& map)
+void Profile::add(Sample const& sample, ModuleMap const& map, Attribution const* attribution)
 {
   if (sample.depth == 0)
     return;
   // Sample numbers start at 1, so a zero in m_seen means never
   auto id = ++m_samples;
+
+  if (attribution)
+  {
+    auto verdict = attribute(sample, map, *attribution);
+    if (verdict.idle)
+      m_idle++;
+    if (verdict.between)
+      m_between++;
+    if (verdict.owner >= 0)
+      grow(static_cast<uint32_t>(verdict.owner)).own++;
+  }
 
   grow(map.bucketOf(sample.frames[0])).self++;
   for (int i = 0; i < sample.depth && i < MAX_FRAMES; i++)
@@ -41,8 +52,11 @@ void Profile::merge(Profile const& other)
     auto& time = grow(i);
     time.inclusive += other.m_buckets[i].inclusive;
     time.self += other.m_buckets[i].self;
+    time.own += other.m_buckets[i].own;
   }
   m_samples += other.m_samples;
+  m_idle += other.m_idle;
+  m_between += other.m_between;
   // Sample numbers go on from the merged count: older marks are lower, so nothing is skipped later
   std::fill(m_seen.begin(), m_seen.end(), 0);
 }
@@ -52,6 +66,8 @@ void Profile::clear()
   m_buckets.clear();
   m_seen.clear();
   m_samples = 0;
+  m_idle = 0;
+  m_between = 0;
 }
 
 void SamplerStats::add(Sample const& sample, double microsPerTick)
@@ -95,20 +111,28 @@ Share shareOf(Window const& window, uint32_t bucket)
   auto time = window.profile.at(bucket);
   share.inclusivePercent = 100.0 * time.inclusive / samples;
   share.selfPercent = 100.0 * time.self / samples;
+  share.ownPercent = 100.0 * time.own / samples;
   if (window.frames > 0)
-    share.inclusiveMillisPerFrame = share.inclusivePercent / 100.0 * window.seconds * 1000.0 / window.frames;
+  {
+    auto frameMillis = window.seconds * 1000.0 / window.frames;
+    share.inclusiveMillisPerFrame = share.inclusivePercent / 100.0 * frameMillis;
+    share.ownMillisPerFrame = share.ownPercent / 100.0 * frameMillis;
+  }
   return share;
 }
 
-std::vector<Share> topMods(Window const& window, size_t limit)
+std::vector<Share> topMods(Window const& window, size_t limit, Order order)
 {
   std::vector<Share> shares;
   auto const& buckets = window.profile.buckets();
-  for (uint32_t i = bucket::OTHER + 1; i < buckets.size(); i++)
+  for (uint32_t i = bucket::FIRST_MOD; i < buckets.size(); i++)
     if (buckets[i].inclusive > 0)
       shares.push_back(shareOf(window, i));
-  std::stable_sort(shares.begin(), shares.end(), [](Share const& a, Share const& b)
-                   { return a.inclusivePercent > b.inclusivePercent; });
+  std::stable_sort(shares.begin(), shares.end(), [&](Share const& a, Share const& b)
+                   {
+                     if (order == Order::Own && a.ownPercent != b.ownPercent)
+                       return a.ownPercent > b.ownPercent;
+                     return a.inclusivePercent > b.inclusivePercent; });
   if (shares.size() > limit)
     shares.resize(limit);
   return shares;
@@ -185,28 +209,42 @@ std::string diagnosticsLine(Window const& window, Buckets const& buckets, size_t
   if (window.profile.samples() == 0)
     return line + " | no samples";
 
-  // Where the thread itself was: the game, cocos, the rest, and the mods together
+  // Where the thread itself was: the game, cocos, the rest, the hooks' own code, and the mods together
   double modsSelf = 100.0;
   line += " | self:";
-  for (uint32_t fixed : {bucket::GAME, bucket::COCOS, bucket::OTHER})
+  for (uint32_t fixed : {bucket::GAME, bucket::COCOS, bucket::OTHER, bucket::HOOKS})
   {
     auto share = shareOf(window, fixed);
     modsSelf -= share.selfPercent;
     line += format(" %s %.1f%%,", buckets[fixed].name.c_str(), share.selfPercent);
   }
   line += format(" mods %.1f%%", std::max(0.0, modsSelf));
+  line += format(" | idle %.1f%%, between frames %.1f%%", 100.0 * window.profile.idle() / window.profile.samples(),
+                 100.0 * window.profile.between() / window.profile.samples());
+
+  auto idOf = [&](uint32_t bucket)
+  { return bucket < buckets.size() ? buckets[bucket].id : std::string("?"); };
+
+  // The mods' own time first: what they cost, then what's under their hooks
+  auto own = topMods(window, topCount, Order::Own);
+  line += " | own:";
+  size_t shown = 0;
+  for (auto const& share : own)
+  {
+    if (share.ownPercent <= 0)
+      continue;
+    line += format("%s %s %.1f%%", shown++ ? "," : "", idOf(share.bucket).c_str(), share.ownPercent);
+    if (share.ownMillisPerFrame > 0)
+      line += format(" (%.2f ms)", share.ownMillisPerFrame);
+  }
+  if (shown == 0)
+    line += " none";
 
   auto top = topMods(window, topCount);
-  line += " | top:";
+  line += " | inclusive:";
   if (top.empty())
     line += " none";
   for (size_t i = 0; i < top.size(); i++)
-  {
-    auto const& share = top[i];
-    auto const& name = share.bucket < buckets.size() ? buckets[share.bucket].id : std::string("?");
-    line += format("%s %s %.1f%%", i ? "," : "", name.c_str(), share.inclusivePercent);
-    if (share.inclusiveMillisPerFrame > 0)
-      line += format(" (%.2f ms)", share.inclusiveMillisPerFrame);
-  }
+    line += format("%s %s %.1f%%", i ? "," : "", idOf(top[i].bucket).c_str(), top[i].inclusivePercent);
   return line;
 }

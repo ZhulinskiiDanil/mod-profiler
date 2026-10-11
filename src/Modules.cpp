@@ -96,6 +96,32 @@ namespace
   }
 } // namespace
 
+std::optional<modules::LearnedFunction> modules::learn(uintptr_t address)
+{
+  DWORD64 base = 0;
+  auto entry = RtlLookupFunctionEntry(address, &base, nullptr);
+  // An entry pointing at another one only happens in images, which the map already has
+  if (!entry || !base || (entry->UnwindData & 1))
+    return std::nullopt;
+
+  // Generated code lives in memory the hook library allocated: as much of it as is committed
+  MEMORY_BASIC_INFORMATION memory{};
+  if (!VirtualQuery(reinterpret_cast<void*>(base), &memory, sizeof(memory)) || memory.State != MEM_COMMIT ||
+      memory.Type == MEM_IMAGE)
+    return std::nullopt;
+  auto size = reinterpret_cast<uintptr_t>(memory.BaseAddress) + memory.RegionSize - static_cast<uintptr_t>(base);
+  if (entry->EndAddress <= entry->BeginAddress || entry->EndAddress > size || entry->UnwindData >= size)
+    return std::nullopt;
+
+  return LearnedFunction{
+      .base = static_cast<uintptr_t>(base),
+      .size = size,
+      .begin = entry->BeginAddress,
+      .end = entry->EndAddress,
+      .unwind = entry->UnwindData,
+  };
+}
+
 std::vector<void*> modules::loaded()
 {
   std::vector<HMODULE> handles(512);
@@ -114,7 +140,8 @@ std::vector<void*> modules::loaded()
   return result;
 }
 
-std::unique_ptr<ModuleMap> modules::build(std::vector<void*> const& handles, std::vector<ModBinary> const& mods, Buckets& buckets)
+std::unique_ptr<ModuleMap> modules::build(std::vector<void*> const& handles, std::vector<ModBinary> const& mods,
+                                          std::vector<LearnedFunction> const& learned, Buckets& buckets)
 {
   std::vector<MappedModule> mapped;
   std::vector<CodeRange> code;
@@ -178,7 +205,59 @@ std::unique_ptr<ModuleMap> modules::build(std::vector<void*> const& handles, std
     mapped.push_back(std::move(module));
   }
 
+  // Generated code, one module for each block of it, with the functions learned in it
+  auto sorted = learned;
+  std::sort(sorted.begin(), sorted.end(), [](auto const& a, auto const& b)
+            { return a.base != b.base ? a.base < b.base : a.begin < b.begin; });
+  for (size_t i = 0; i < sorted.size();)
+  {
+    auto index = static_cast<uint32_t>(mapped.size());
+    MappedModule block{.base = sorted[i].base, .size = sorted[i].size, .bucket = bucket::HOOKS, .name = "hooks"};
+    for (; i < sorted.size() && sorted[i].base == block.base; i++)
+    {
+      auto const& function = sorted[i];
+      // The same function learned twice, from two addresses in it
+      if (!block.ownFunctions.empty() && block.ownFunctions[block.ownFunctions.size() - 3] == function.begin)
+        continue;
+      block.ownFunctions.insert(block.ownFunctions.end(), {function.begin, function.end, function.unwind});
+      code.push_back({block.base + function.begin, block.base + function.end, index});
+    }
+    mapped.push_back(std::move(block));
+  }
+
   return std::make_unique<ModuleMap>(std::move(mapped), std::move(code));
+}
+
+std::vector<std::pair<uintptr_t, uintptr_t>> modules::waitFunctions()
+{
+  // A stub is a few instructions around `syscall`: the thread is right after it while in the kernel
+  constexpr uintptr_t STUB_SIZE = 0x20;
+  static constexpr std::pair<wchar_t const*, char const*> functions[] = {
+      {L"ntdll.dll", "NtWaitForSingleObject"},
+      {L"ntdll.dll", "NtWaitForMultipleObjects"},
+      {L"ntdll.dll", "NtDelayExecution"},
+      {L"ntdll.dll", "NtWaitForAlertByThreadId"},
+      {L"ntdll.dll", "NtWaitForKeyedEvent"},
+      {L"ntdll.dll", "NtSignalAndWaitForSingleObject"},
+      {L"ntdll.dll", "NtRemoveIoCompletion"},
+      {L"ntdll.dll", "NtRemoveIoCompletionEx"},
+      {L"win32u.dll", "NtUserMsgWaitForMultipleObjectsEx"},
+      {L"win32u.dll", "NtUserWaitMessage"},
+      {L"win32u.dll", "NtUserGetMessage"},
+      {L"win32u.dll", "NtGdiDdDDIWaitForVerticalBlankEvent"},
+      {L"win32u.dll", "NtGdiDdDDIWaitForVerticalBlankEvent2"},
+      {L"win32u.dll", "NtGdiDdDDIWaitForSynchronizationObjectFromCpu"},
+  };
+  std::vector<std::pair<uintptr_t, uintptr_t>> ranges;
+  for (auto [library, name] : functions)
+  {
+    auto module = GetModuleHandleW(library);
+    if (!module)
+      continue;
+    if (auto address = reinterpret_cast<uintptr_t>(GetProcAddress(module, name)))
+      ranges.push_back({address, address + STUB_SIZE});
+  }
+  return ranges;
 }
 
 void modules::release(ModuleMap const& map)

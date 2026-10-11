@@ -166,6 +166,25 @@ static void testChainedFramePointer()
   CHECK(extent.bytes == 16);
 }
 
+// ! --- Function starts --- !
+
+static void testFunctionBegin()
+{
+  // A part at 0x500 chained to its function at 0x100, which isn't chained
+  Image image;
+  image.info(0x200, 1, 0, 0, 0, 0, {});
+  image.info(0x300, 1, 4, 0, 0, 0, {code(0, 2, 1)});
+  image.chain(0x300, 1, 0x200);
+  // chain() writes begin 0: put the parent's begin in
+  uint32_t parentBegin = 0x100;
+  std::memcpy(image.bytes.data() + 0x300 + 4 + 2 * 2, &parentBegin, 4);
+  CHECK(unwind::functionBegin(image.bytes.data(), image.bytes.size(), 0x500, 0x300) == 0x100);
+  // Not chained: its own begin
+  CHECK(unwind::functionBegin(image.bytes.data(), image.bytes.size(), 0x100, 0x200) == 0x100);
+  // Broken: the begin it was given
+  CHECK(unwind::functionBegin(image.bytes.data(), image.bytes.size(), 0x700, 0xFFFF) == 0x700);
+}
+
 // ! --- Broken info --- !
 
 static void testBroken()
@@ -204,6 +223,7 @@ int main()
   testMachineFrame();
   testChained();
   testChainedFramePointer();
+  testFunctionBegin();
   testBroken();
   return finish("unwind");
 }

@@ -8,12 +8,15 @@
 #include <string>
 #include <vector>
 
-// The buckets the time is split into: the game, cocos, everything else, then one for each mod
+// The buckets the time is split into: the game, cocos, everything else, the code Geode's hooks
+// generate (handlers and trampolines), then one for each mod
 namespace bucket
 {
   inline constexpr uint32_t GAME = 0;
   inline constexpr uint32_t COCOS = 1;
   inline constexpr uint32_t OTHER = 2;
+  inline constexpr uint32_t HOOKS = 3;
+  inline constexpr uint32_t FIRST_MOD = 4;
 } // namespace bucket
 
 struct Bucket
@@ -47,6 +50,9 @@ struct MappedModule
   // The image's RUNTIME_FUNCTION table: begin, end and unwind info RVAs, sorted by begin
   uint32_t const* functions = nullptr;
   size_t functionCount = 0;
+  // For generated code, which has no table of its own: the entries learned so far, sorted.
+  // The map points `functions` at it
+  std::vector<uint32_t> ownFunctions;
   uint32_t bucket = bucket::OTHER;
   // The file name, for the reports
   std::string name;
@@ -73,6 +79,9 @@ public:
   int findImage(uintptr_t address) const noexcept;
   // The bucket the address counts for: OTHER outside every module
   uint32_t bucketOf(uintptr_t address) const noexcept;
+  // Where the function holding the address starts, from the function table: 0 for a leaf function
+  // (no entry) or outside every module. Reads the image's unwind info, so not while sampling
+  uintptr_t functionStart(uintptr_t address) const noexcept;
 
   MappedModule const& module(size_t index) const { return m_modules[index]; }
   size_t moduleCount() const { return m_modules.size(); }

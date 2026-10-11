@@ -41,6 +41,24 @@ namespace
   }
 } // namespace
 
+uint32_t unwind::functionBegin(uint8_t const* image, size_t imageSize, uint32_t begin, uint32_t unwindRva) noexcept
+{
+  for (int chain = 0; chain < MAX_CHAIN; chain++)
+  {
+    if (static_cast<uint64_t>(unwindRva) + 4 > imageSize)
+      return begin;
+    auto info = image + unwindRva;
+    if (!((info[0] >> 3) & FLAG_CHAININFO))
+      return begin;
+    auto codesEnd = static_cast<uint64_t>(unwindRva) + 4 + ((info[2] + 1) & ~1) * 2;
+    if (codesEnd + 12 > imageSize)
+      return begin;
+    begin = read32(image + codesEnd);
+    unwindRva = read32(image + codesEnd + 8);
+  }
+  return begin;
+}
+
 unwind::Extent unwind::frameExtent(uint8_t const* image, size_t imageSize, uint32_t unwindRva, uint32_t offset) noexcept
 {
   Extent extent;

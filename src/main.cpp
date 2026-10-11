@@ -33,6 +33,61 @@ namespace
     return mods;
   }
 
+  std::vector<profiler::HookInfo> loadedHooks()
+  {
+    std::vector<profiler::HookInfo> hooks;
+    for (auto mod : Loader::get()->getAllMods())
+    {
+      if (!mod->isLoaded())
+        continue;
+      for (auto hook : mod->getHooks())
+      {
+        // The detour is only in the runtime info, as a decimal string
+        auto detour = hook->getRuntimeInfo()["detour"].asString().unwrapOr("0");
+        hooks.push_back({
+            .mod = std::string(mod->getID()),
+            .target = hook->getAddress(),
+            .detour = static_cast<uintptr_t>(std::strtoull(detour.c_str(), nullptr, 10)),
+        });
+      }
+    }
+    return hooks;
+  }
+
+  // CCApplication::run is the game's loop: a frame is CCDirector::mainLoop and CCEGLView::pollEvents,
+  // the rest of the loop waits for the next frame
+  void findLoop()
+  {
+    auto cocos = GetModuleHandleW(L"libcocos2d.dll");
+    if (!cocos)
+      return;
+    auto exported = [&](char const* name)
+    { return reinterpret_cast<uintptr_t>(GetProcAddress(cocos, name)); };
+    auto run = exported("?run@CCApplication@cocos2d@@UEAAHXZ");
+    auto pollEvents = exported("?pollEvents@CCEGLView@cocos2d@@QEAAXXZ");
+
+    // mainLoop isn't exported: it's in the director's vtable
+    uintptr_t mainLoop = 0;
+    if (auto director = CCDirector::get())
+    {
+      auto self = reinterpret_cast<uintptr_t>(static_cast<CCDisplayLinkDirector*>(director)) +
+                  addresser::getThunkOffset(&CCDisplayLinkDirector::mainLoop);
+      auto table = *reinterpret_cast<uintptr_t*>(self);
+      mainLoop = *reinterpret_cast<uintptr_t*>(table + addresser::getVirtualOffset(&CCDisplayLinkDirector::mainLoop));
+      // An incremental-linking thunk: a jmp to the function
+      if (mainLoop && *reinterpret_cast<uint8_t*>(mainLoop) == 0xE9)
+        mainLoop += 5 + *reinterpret_cast<int32_t*>(mainLoop + 1);
+    }
+    if (!run || !mainLoop)
+    {
+      log::warn("Couldn't find the game's loop, the time between frames counts as frame time");
+      return;
+    }
+    auto base = reinterpret_cast<uintptr_t>(cocos);
+    log::info("The game's loop: run at libcocos2d.dll+{:#x}, mainLoop at +{:#x}", run - base, mainLoop - base);
+    profiler::setLoop(run, {mainLoop, pollEvents});
+  }
+
   // Counts the frames as a plain scheduler callback: a hook on the frame would put this mod on
   // every stack under it, and its share would look like everything the frame does
   class FrameCounter : public CCObject
@@ -59,5 +114,8 @@ $on_game(Loaded)
 {
   // Every mod is loaded by now, with its name
   profiler::setMods(loadedMods());
+  profiler::setHooks(loadedHooks());
+  findLoop();
+  profiler::hooksReady();
   CCDirector::get()->getScheduler()->scheduleUpdateForTarget(new FrameCounter(), 0, false);
 }

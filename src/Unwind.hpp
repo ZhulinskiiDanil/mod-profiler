@@ -25,4 +25,8 @@ namespace unwind
   // The image is `imageSize` bytes from `image`. `unwindRva` is the function's UNWIND_INFO,
   // `offset` is how far into the function the address is (a frame in its prolog has done only part of it)
   Extent frameExtent(uint8_t const* image, size_t imageSize, uint32_t unwindRva, uint32_t offset) noexcept;
+
+  // Where the function an entry belongs to starts. A compiler can split a function into parts with
+  // their own entries, chained to the first one: `begin` and `unwindRva` are the part's
+  uint32_t functionBegin(uint8_t const* image, size_t imageSize, uint32_t begin, uint32_t unwindRva) noexcept;
 } // namespace unwind

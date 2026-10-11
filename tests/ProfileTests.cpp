@@ -5,14 +5,18 @@
 #include <cmath>
 #include <initializer_list>
 
-// GD at 0x1000, cocos at 0x2000, mod A (bucket 3) at 0x3000, mod B (bucket 4) at 0x4000, a system DLL at 0x5000
+// The first two mods' buckets
+constexpr uint32_t A = bucket::FIRST_MOD;
+constexpr uint32_t B = bucket::FIRST_MOD + 1;
+
+// GD at 0x1000, cocos at 0x2000, mod A at 0x3000, mod B at 0x4000, a system DLL at 0x5000
 static ModuleMap sampleMap()
 {
   std::vector<MappedModule> modules = {
       {.base = 0x1000, .size = 0x1000, .bucket = bucket::GAME},
       {.base = 0x2000, .size = 0x1000, .bucket = bucket::COCOS},
-      {.base = 0x3000, .size = 0x1000, .bucket = 3},
-      {.base = 0x4000, .size = 0x1000, .bucket = 4},
+      {.base = 0x3000, .size = 0x1000, .bucket = A},
+      {.base = 0x4000, .size = 0x1000, .bucket = B},
       {.base = 0x5000, .size = 0x1000, .bucket = bucket::OTHER},
   };
   return ModuleMap(std::move(modules), {});
@@ -45,11 +49,11 @@ static void testInclusiveOncePerSample()
   // Mod A is on the stack three times (a recursive call through the game): counted once
   profile.add(stack({0x3010, 0x1010, 0x3020, 0x1020, 0x3030}), map);
   CHECK(profile.samples() == 1);
-  CHECK(profile.at(3).inclusive == 1);
-  CHECK(profile.at(3).self == 1);
+  CHECK(profile.at(A).inclusive == 1);
+  CHECK(profile.at(A).self == 1);
   CHECK(profile.at(bucket::GAME).inclusive == 1);
   CHECK(profile.at(bucket::GAME).self == 0);
-  CHECK(profile.at(4).inclusive == 0);
+  CHECK(profile.at(B).inclusive == 0);
 }
 
 static void testSelfIsTheFirstFrame()
@@ -61,10 +65,10 @@ static void testSelfIsTheFirstFrame()
   CHECK(profile.samples() == 2);
   CHECK(profile.at(bucket::OTHER).self == 1);
   CHECK(profile.at(bucket::COCOS).self == 1);
-  CHECK(profile.at(4).inclusive == 1);
-  CHECK(profile.at(3).inclusive == 1);
+  CHECK(profile.at(B).inclusive == 1);
+  CHECK(profile.at(A).inclusive == 1);
   CHECK(profile.at(bucket::GAME).inclusive == 2);
-  CHECK(profile.at(3).self == 0);
+  CHECK(profile.at(A).self == 0);
 }
 
 static void testUnknownAddressesAreOther()
@@ -74,7 +78,7 @@ static void testUnknownAddressesAreOther()
   // A hook handler outside every module
   profile.add(stack({0x9000, 0x3010}), map);
   CHECK(profile.at(bucket::OTHER).self == 1);
-  CHECK(profile.at(3).inclusive == 1);
+  CHECK(profile.at(A).inclusive == 1);
 }
 
 static void testEmptySamplesAreSkipped()
@@ -95,15 +99,15 @@ static void testMerge()
   b.add(stack({0x4010, 0x1010}), map);
   a.merge(b);
   CHECK(a.samples() == 3);
-  CHECK(a.at(3).inclusive == 2);
-  CHECK(a.at(4).inclusive == 1);
+  CHECK(a.at(A).inclusive == 2);
+  CHECK(a.at(B).inclusive == 1);
   CHECK(a.at(bucket::GAME).inclusive == 3);
   // Counting goes on right after a merge
   a.add(stack({0x3010, 0x3020}), map);
-  CHECK(a.at(3).inclusive == 3);
+  CHECK(a.at(A).inclusive == 3);
   a.clear();
   CHECK(a.samples() == 0);
-  CHECK(a.at(3).inclusive == 0);
+  CHECK(a.at(A).inclusive == 0);
 }
 
 // ! --- Shares --- !
@@ -125,7 +129,7 @@ static Window sampleWindow()
 static void testShares()
 {
   auto window = sampleWindow();
-  auto a = shareOf(window, 3);
+  auto a = shareOf(window, A);
   CHECK(near(a.inclusivePercent, 40));
   CHECK(near(a.selfPercent, 30));
   // 40% of 10 ms a frame
@@ -141,9 +145,9 @@ static void testSharesWithoutFrames()
 {
   auto window = sampleWindow();
   window.frames = 0;
-  CHECK(near(shareOf(window, 3).inclusiveMillisPerFrame, 0));
+  CHECK(near(shareOf(window, A).inclusiveMillisPerFrame, 0));
   Window empty;
-  CHECK(near(shareOf(empty, 3).inclusivePercent, 0));
+  CHECK(near(shareOf(empty, A).inclusivePercent, 0));
 }
 
 static void testTopMods()
@@ -152,8 +156,8 @@ static void testTopMods()
   auto top = topMods(window, 5);
   // Only mods: the game, cocos and other are left out
   CHECK(top.size() == 2);
-  CHECK(top[0].bucket == 3);
-  CHECK(top[1].bucket == 4);
+  CHECK(top[0].bucket == A);
+  CHECK(top[1].bucket == B);
   CHECK(topMods(window, 1).size() == 1);
   CHECK(topMods(Window{}, 5).empty());
 }
@@ -209,8 +213,11 @@ static void testDiagnosticsLine()
   CHECK(contains(line, "10 samples in 1.00 s"));
   CHECK(contains(line, "suspended avg 15.0 us, max 40.0 us (stopping avg 5.0 us, max 20.0 us)"));
   CHECK(contains(line, "100 fps"));
-  CHECK(contains(line, "self: Geometry Dash 60.0%, Cocos2d 0.0%, Other 0.0%, mods 40.0%"));
-  CHECK(contains(line, "top: zhulis.a 40.0% (4.00 ms), zhulis.b 10.0% (1.00 ms)"));
+  CHECK(contains(line, "self: Geometry Dash 60.0%, Cocos2d 0.0%, Other 0.0%, Hook handlers 0.0%, mods 40.0%"));
+  CHECK(contains(line, "inclusive: zhulis.a 40.0%, zhulis.b 10.0%"));
+  CHECK(contains(line, "idle 0.0%, between frames 0.0%"));
+  // Without an attribution nobody has own time
+  CHECK(contains(line, "own: none"));
   // Nothing went wrong: no list of problems
   CHECK(!contains(line, "dropped"));
 }
@@ -242,7 +249,7 @@ static void testDiagnosticsNoMods()
   window.seconds = 1;
   window.profile.add(stack({0x1010}), map);
   auto line = diagnosticsLine(window, sampleBuckets(), 3);
-  CHECK(contains(line, "top: none"));
+  CHECK(contains(line, "inclusive: none"));
 }
 
 int main()

@@ -3,7 +3,8 @@
 // One look at the main thread's stack, as the sampler writes it into the ring
 #include <cstdint>
 
-inline constexpr int MAX_FRAMES = 32;
+// A main thread in the graphics driver is 40 or more frames deep, and the mods are near the bottom
+inline constexpr int MAX_FRAMES = 64;
 
 enum SampleFlags : uint16_t
 {
