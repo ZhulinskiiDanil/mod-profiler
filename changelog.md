@@ -1,3 +1,12 @@
+# v0.2.0
+
+- A table in the game (`Ctrl+Shift+P`): every mod's own time a frame, its own and inclusive share of the last 5 seconds
+- Own time: each sample goes to the innermost mod doing its own work, not to a hook passing the call on to the original. Geode and mod menus are no longer near 100% of everything
+- Click a mod for the hooks its time is under and its functions, named from PDBs, `Geode.pdb` and export tables
+- Time between frames (a frame limiter spinning on the clock) and waiting in Windows are told apart from the frame
+- Stacks go through Geode's hook handlers with their unwind info instead of being scanned past them, and up to 64 frames deep
+- A setting for the function names
+
 # v0.1.0
 
 - A sampler stops the main thread about once a millisecond and walks its stack, without allocating, logging or locking while it's stopped

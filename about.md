@@ -2,14 +2,18 @@
 
 Shows how much of each frame every installed mod takes.
 
-About once a millisecond the profiler stops the game's main thread for a few microseconds, reads its call stack and lets it go. Whichever mods have code on that stack get the sample. Once a second the numbers go to Geode's log:
+Press <cy>Ctrl+Shift+P</c> in the game for the table:
 
-- **Inclusive**: how often a mod's code is anywhere on the stack, the game code its hooks call included
-- **Self**: how often the thread is in the mod's own code
-- **ms a frame**: the inclusive share of an average frame
+- **own ms**: what the mod costs a frame, its own work only. A hook that just calls the original function doesn't count, the work under it belongs to whoever does it
+- **incl %**: how often the mod's code is anywhere on the stack, everything its hooks call included
+- **Click a mod**: the hooks its time is under (like `MenuLayer::init`) and its functions, by name when the mod's PDB is around
 
-Geometry Dash, Cocos2d and the rest (Windows, the graphics driver) are counted apart from the mods.
+The top line says how much of the time is in frames, between frames (a frame limiter waiting) and idle.
 
-The profiler checks itself: the log line says how long each stop took (usually 20 to 40 microseconds) and whether any sample was lost.
+## How
+
+About once a millisecond the profiler stops the game's main thread for a few microseconds, reads its call stack and lets it go. While the thread is stopped it only reads: no memory is allocated, nothing is logged or locked, so it can't freeze the game.
+
+It checks itself in Geode's log once a second: how many samples, how long each stop took (usually 20 to 40 microseconds), and the mods taking the most.
 
 Windows only.
