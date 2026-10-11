@@ -108,10 +108,21 @@ namespace
     log::info("Self test: a 120 ms slow frame made");
   }
 
+  // A frame that takes 4.5 seconds: the hang report has to come during it
+  void __declspec(noinline) selfTestHang()
+  {
+    auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(4500);
+    volatile uint64_t spin = 0;
+    while (std::chrono::steady_clock::now() < until)
+      spin = spin + 1;
+    log::info("Self test: a 4.5 s frame made");
+  }
+
   class SelfTest : public CCObject
   {
   public:
     void run(float) { selfTestSlowFrame(); }
+    void hang(float) { selfTestHang(); }
     void play(float)
     {
       auto level = GameLevelManager::get()->getMainLevel(1, false);
@@ -182,6 +193,8 @@ $on_game(Loaded)
 
   char value[8] = {};
   auto selfTest = GetEnvironmentVariableA("MOD_PROFILER_SELFTEST", value, sizeof(value)) ? std::string(value) : std::string();
+  if (selfTest == "hang")
+    CCDirector::get()->getScheduler()->scheduleSelector(schedule_selector(SelfTest::hang), new SelfTest(), 0, 0, 30, false);
   if (selfTest == "1" || selfTest == "play")
   {
     // Then the profile with it in, saved
@@ -197,4 +210,14 @@ $on_game(Loaded)
   baseline_file::load();
   overlay::setup();
   overlay::setVisible(Mod::get()->getSavedValue<bool>("overlay-visible", false));
+}
+
+// ! --- End --- !
+
+// The whole session in the log when the game closes, for reading after playing
+$on_game(Exiting)
+{
+  auto snapshot = profiler::snapshot();
+  if (snapshot->session.profile.samples() > 0)
+    log::info("The session: {}", summaryLine(snapshot->session, snapshot->buckets, 8));
 }

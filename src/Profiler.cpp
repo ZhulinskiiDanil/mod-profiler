@@ -82,6 +82,9 @@ namespace
     std::deque<Sample> held;
     FrameClock clock;
     uint64_t frameEndsLost = 0;
+    // When the last frame ended, and when a frame still going on was last told about
+    int64_t lastFrameEnd = 0;
+    int64_t lastHangReport = 0;
     std::deque<profiler::SlowFrame> slowFrames;
     // Since the last marker
     Window span;
@@ -299,6 +302,54 @@ namespace
         places += fmt::format(", under its hook of {}", nameOf(analyzer, place.address));
       log::info("The start's busiest mod, {}: {} ({} samples kept)", analyzer.buckets[bucket].name, places, samples);
     }
+  }
+
+  // A frame going on for this long is told about before it ends, and again this often while it lasts: if
+  // the game hangs, the log says where
+  constexpr double HANG_SECONDS = 2;
+  constexpr double HANG_REPEAT_SECONDS = 5;
+  // A frame that's mostly waiting is the game minimized or a dialog, not a hang
+  constexpr double HANG_MIN_WORK = 0.5;
+
+  void watchForHang(Analyzer& analyzer)
+  {
+    if (!analyzer.lastFrameEnd || !sampler::running())
+      return;
+    auto ticksPerSecond = static_cast<double>(sampler::ticksPerSecond());
+    auto now = sampler::now();
+    if ((now - analyzer.lastFrameEnd) / ticksPerSecond < HANG_SECONDS)
+      return;
+    if (analyzer.lastHangReport > analyzer.lastFrameEnd && (now - analyzer.lastHangReport) / ticksPerSecond < HANG_REPEAT_SECONDS)
+      return;
+
+    std::vector<Sample const*> samples;
+    std::vector<Verdict> verdicts;
+    for (auto const& sample : analyzer.held)
+      if (sample.depth > 0 && sample.time >= analyzer.lastFrameEnd)
+      {
+        samples.push_back(&sample);
+        verdicts.push_back(attribute(sample, *analyzer.map, analyzer.attribution));
+      }
+    if (samples.empty())
+      return;
+    auto spike = makeSpike({analyzer.lastFrameEnd, now}, ticksPerSecond / 1000, samples, verdicts, 1);
+    if (spike.idlePercent > 100 * (1 - HANG_MIN_WORK))
+      return;
+    analyzer.lastHangReport = now;
+
+    auto who = spike.culprit < 0 ? fmt::format("no mod (the game {:.0f}%)", spike.gamePercent)
+                                 : fmt::format("{} {:.0f}%", analyzer.buckets[static_cast<uint32_t>(spike.culprit)].name, spike.culpritPercent);
+    if (!spike.functions.empty())
+      who += fmt::format(" in {}", nameOf(analyzer, spike.functions.front().address));
+    if (!spike.hooks.empty())
+      who += fmt::format(" under its hook of {}", nameOf(analyzer, spike.hooks.front().address));
+    log::warn("One frame has taken {:.1f} s so far (the game may hang): {}", spike.millis / 1000, who);
+    // The newest sample says where the thread is right now
+    auto const& last = *samples.back();
+    std::string stack;
+    for (int i = 0; i < last.depth && i < MAX_FRAMES; i++)
+      stack += (i ? " < " : "") + nameOf(analyzer, last.frames[i]);
+    log::warn("Where it is now: {}", stack);
   }
 
   void findSlowFrames(Analyzer& analyzer)
@@ -573,6 +624,7 @@ namespace
       while (auto end = s_frameEnds.peek())
       {
         analyzer.clock.add(*end);
+        analyzer.lastFrameEnd = *end;
         s_frameEnds.pop();
       }
       // Frame ends the ring had no room for: two ends with a lost one between would look like one long
@@ -586,6 +638,7 @@ namespace
       {
         analyze(analyzer, window);
         findSlowFrames(analyzer);
+        watchForHang(analyzer);
         countStartup(analyzer);
       }
       exportIfAsked(analyzer);

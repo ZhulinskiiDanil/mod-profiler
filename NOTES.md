@@ -112,6 +112,17 @@ Start: **Sun Oct 11 03:33:17 2026** (the first `date` of the run).
   the 2.6% is an upper bound.
 - 06:10 v0.4.0 released (pre-release) after a check in a level.
 
+- 06:12 the hook handlers' own time and the hook library's bookkeeping became a row of their own, "Hook
+  dispatch" (0.48 s of the start, 0.03 ms a frame in a level). Settings for the table's corner and size.
+  Review item 8 (epilog tails of rbp frames) fixed, only where the bytes are pops then ret.
+- 06:20 a test of the sampler itself on Windows (`tests/SamplerTests.cpp`): a thread stuck in a known chain
+  of functions is sampled by the real sampler; every sample must walk the chain in order down to the
+  thread's start, every sample of a 200-deep recursion must be cut at 64 frames and marked. CI runs it with
+  MSVC (a leaf without a frame has no `.pdata` there: the test's innermost function calls a leaf now).
+- 06:31 a 20 minute soak in a level with the table shown: 1264 diagnostics lines, no gap, no crash, 999
+  samples a second, 29.7 us a sample, the analyzer 0.38% of a core. The game's memory 1.370 GB after a
+  minute, 1.392 GB after 21: growth flattens (+0.2 MB in the last 4 minutes).
+
 ## Numbers
 
 | Check | Samples/s | Suspended avg | Max | Scanned/s | Result |
@@ -126,3 +137,5 @@ Start: **Sun Oct 11 03:33:17 2026** (the first `date` of the run).
 | v0.3.0, 100 s in a level | 994 | 29.6 us | 733 us single | 18 | stopped 29.4 ms/s, sampler 2.0%, analyzer 0.7%, no gap, no crash |
 | sampling off, 80 s in a level | 0 | - | - | - | no diagnostics, no slow frames, table says "No samples yet" |
 | v0.4.0, start + 20 s menu + 75 s level | 997 | 28.9 us | 46.0 us avg in the worst second | 20 | start counted (8.0 s), no gap, no crash, analyzer 0.69% |
+| soak, 21 min in a level, table shown | 999 | 29.7 us | 50.4 us avg in the worst second, 1160 us single | 2.2 | 1264 lines, no gap, no crash, memory flat after ~5 min |
+| sampler test (Windows, MSVC and clang) | 1000 | 22-26 us | - | - | 490-499 of 490-499 samples walk the chain, 292-297 of 292-297 deep ones cut at 64 |

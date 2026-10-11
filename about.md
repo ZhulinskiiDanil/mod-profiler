@@ -8,6 +8,7 @@ Press <cy>Ctrl+Shift+P</c> in the game for the table:
 - **incl %**: how often the mod's code is anywhere on the stack, everything its hooks call included
 - **Click a mod**: the hooks its time is under (like `MenuLayer::init`) and its functions, by name when the mod's PDB is around
 - **Slow frames**: every frame over 50 ms, with the mod whose time it was and the function. In the table and in the log, with a stack
+- **Hangs**: a frame going on for 2 seconds is in the log before it ends, with the mod and where the game is stuck
 
 The top lines say how much of the time is in frames, between frames (a frame limiter waiting) and idle, and what the profiler itself costs.
 
