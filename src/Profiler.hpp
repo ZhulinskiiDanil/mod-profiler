@@ -54,9 +54,9 @@ namespace profiler
   // Marker summaries say what changed since it
   void setBaseline(Baseline baseline);
 
-  // Saves the last seconds of samples for speedscope.app, on the analyzer thread at its next
-  // second. `done` gets the file, or an error, on the main thread
-  void requestExport(std::function<void(std::string const& file, std::string const& error)> done);
+  // Saves the last seconds of samples (or the game's start) for speedscope.app, on the analyzer thread
+  // at its next second. `done` gets the file, or an error, on the main thread
+  void requestExport(bool startup, std::function<void(std::string const& file, std::string const& error)> done);
 
   // How many seconds the recent window has
   inline constexpr int RECENT_SECONDS = 5;

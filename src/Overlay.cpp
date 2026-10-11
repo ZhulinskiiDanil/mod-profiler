@@ -174,7 +174,12 @@ namespace
       auto between = 100.0 * profile.between() / samples;
       auto idle = 100.0 * profile.idle() / samples;
       auto cost = costOf(window);
-      m_summary->setString(fmt::format("in frames {:.0f}% ({:.2f} ms), between {:.0f}%, idle {:.0f}%   stopped {:.1f} ms/s",
+      if (startup)
+        m_summary->setString(fmt::format("working {:.0f}%, waiting {:.0f}%   {} samples, [save profile] saves the start",
+                                         std::max(0.0, 100 - between - idle), between + idle, window.stats.samples)
+                                 .c_str());
+      else
+        m_summary->setString(fmt::format("in frames {:.0f}% ({:.2f} ms), between {:.0f}%, idle {:.0f}%   stopped {:.1f} ms/s",
                                        std::max(0.0, 100 - between - idle), busyMillis(window), between, idle,
                                        cost.stoppedMillisPerSecond)
                                .c_str());
@@ -310,7 +315,8 @@ namespace
       refresh(0);
     }
 
-    void onSave(CCObject*) { overlay::saveProfile(); }
+    // In the start's view, the start is saved
+    void onSave(CCObject*) { overlay::saveProfile(m_view == View::Startup); }
 
     void clearRow(Row& row)
     {
@@ -445,10 +451,10 @@ void overlay::toggle() { setVisible(!visible()); }
 
 bool overlay::visible() { return s_overlay && s_overlay->isVisible(); }
 
-void overlay::saveProfile()
+void overlay::saveProfile(bool startup)
 {
-  Notification::create("Saving the last 10 seconds...", NotificationIcon::Loading, 1.5f)->show();
-  profiler::requestExport([](std::string const& file, std::string const& error)
+  Notification::create(startup ? "Saving the game's start..." : "Saving the last 10 seconds...", NotificationIcon::Loading, 1.5f)->show();
+  profiler::requestExport(startup, [](std::string const& file, std::string const& error)
                           {
                             if (!error.empty())
                             {

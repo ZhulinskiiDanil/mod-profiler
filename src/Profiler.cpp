@@ -36,6 +36,7 @@ namespace
   std::atomic<uint64_t> s_frameEndsLost{0};
   // An export asked for, under s_mutex
   std::function<void(std::string const&, std::string const&)> s_exportDone;
+  bool s_exportStartup = false;
   // A span asked for, under s_mutex: its label
   std::optional<std::string> s_spanLabel;
   std::atomic<bool> s_resetSession{false};
@@ -142,11 +143,13 @@ namespace
     return text;
   }
 
-  // The held samples as a speedscope profile: frames merged by function, hook handlers as one
-  speedscope::Profile exportProfile(Analyzer& analyzer)
+  // Samples as a speedscope profile: frames merged by function, hook handlers as one. `sampleAt(i)`
+  // gives the i-th of `count` samples, oldest first
+  template <class SampleAt>
+  speedscope::Profile exportProfile(Analyzer& analyzer, std::string name, size_t count, SampleAt&& sampleAt)
   {
     speedscope::Profile profile;
-    profile.name = fmt::format("Geometry Dash main thread, {}", localTime());
+    profile.name = std::move(name);
     std::unordered_map<uintptr_t, uint32_t> frameOf;
     uint32_t handlerFrame = UINT32_MAX;
 
@@ -174,31 +177,43 @@ namespace
     };
 
     auto ticksPerMilli = sampler::ticksPerSecond() / 1000.0;
-    auto const& held = analyzer.held;
-    for (size_t i = 0; i < held.size(); i++)
+    for (size_t i = 0; i < count; i++)
     {
-      auto const& sample = held[i];
+      Sample const& sample = sampleAt(i);
       if (sample.depth == 0)
         continue;
       std::vector<uint32_t> stack;
       for (int frame = std::min<int>(sample.depth, MAX_FRAMES) - 1; frame >= 0; frame--)
         stack.push_back(frameFor(sample.frames[frame], frame == 0));
+      auto time = sample.time;
       // A sample stands for the time until the next one, a few intervals at most (the sampler can be late)
       double weight = 1;
-      if (i + 1 < held.size())
-        weight = std::clamp((held[i + 1].time - sample.time) / ticksPerMilli, 0.0, 10.0);
+      if (i + 1 < count)
+        weight = std::clamp((sampleAt(i + 1).time - time) / ticksPerMilli, 0.0, 10.0);
       profile.stacks.push_back(std::move(stack));
       profile.weights.push_back(weight);
     }
     return profile;
   }
 
+  // A kept sample of the start, whole again
+  Sample const& startupSample(Analyzer& analyzer, size_t index, Sample& into)
+  {
+    auto const& kept = analyzer.startupSamples[index];
+    into.time = kept.time;
+    into.depth = kept.depth;
+    std::copy_n(analyzer.startupFrames.begin() + kept.first, kept.depth, into.frames);
+    return into;
+  }
+
   void exportIfAsked(Analyzer& analyzer)
   {
     std::function<void(std::string const&, std::string const&)> done;
+    bool startup;
     {
       std::lock_guard lock(s_mutex);
       done.swap(s_exportDone);
+      startup = s_exportStartup;
     }
     if (!done)
       return;
@@ -206,8 +221,8 @@ namespace
     std::string file, error;
     if (!analyzer.map)
       error = "Sampling is off";
-    else if (analyzer.held.empty())
-      error = "No samples yet";
+    else if (startup ? !analyzer.startupDone || analyzer.startupSamples.empty() : analyzer.held.empty())
+      error = startup ? "The start isn't counted yet" : "No samples yet";
     else
     {
       auto folder = Mod::get()->getSaveDir() / "profiles";
@@ -215,9 +230,17 @@ namespace
       std::filesystem::create_directories(folder, code);
       auto time = localTime();
       std::erase(time, ':');
-      auto path = folder / fmt::format("profile-{}.speedscope.json", time);
+      auto path = folder / fmt::format("{}-{}.speedscope.json", startup ? "start" : "profile", time);
       std::ofstream out(path, std::ios::binary);
-      out << speedscope::json(exportProfile(analyzer));
+      if (startup)
+      {
+        Sample scratch;
+        out << speedscope::json(exportProfile(analyzer, "Geometry Dash main thread, the game's start", analyzer.startupSamples.size(),
+                                              [&](size_t i) -> Sample const& { return startupSample(analyzer, i, scratch); }));
+      }
+      else
+        out << speedscope::json(exportProfile(analyzer, fmt::format("Geometry Dash main thread, {}", localTime()), analyzer.held.size(),
+                                              [&](size_t i) -> Sample const& { return analyzer.held[i]; }));
       if (out)
         file = utils::string::pathToString(path);
       else
@@ -244,19 +267,15 @@ namespace
     Window startup;
     startup.seconds = std::chrono::duration<double>(*analyzer.hooksReadyAt - analyzer.startupBegin).count();
     Sample sample;
-    for (auto const& kept : analyzer.startupSamples)
+    for (size_t i = 0; i < analyzer.startupSamples.size(); i++)
     {
-      sample.time = kept.time;
-      sample.depth = kept.depth;
-      std::copy_n(analyzer.startupFrames.begin() + kept.first, kept.depth, sample.frames);
-      startup.profile.add(sample, *analyzer.map, &analyzer.attribution);
+      startup.profile.add(startupSample(analyzer, i, sample), *analyzer.map, &analyzer.attribution);
       startup.stats.samples++;
     }
     analyzer.startup = std::move(startup);
     analyzer.startupDone = true;
+    // Kept for [save profile] in the table's start view: a few MB
     auto samples = analyzer.startupSamples.size();
-    analyzer.startupSamples = {};
-    analyzer.startupFrames = {};
 
     log::info("The game's start, from Mod Profiler loaded to the game loaded: {}", startupLine(analyzer.startup, analyzer.buckets, 8));
     // Where the mod with the most of it spent it
@@ -716,10 +735,11 @@ void profiler::setBaseline(Baseline baseline)
   s_baseline = std::move(baseline);
 }
 
-void profiler::requestExport(std::function<void(std::string const& file, std::string const& error)> done)
+void profiler::requestExport(bool startup, std::function<void(std::string const& file, std::string const& error)> done)
 {
   std::lock_guard lock(s_mutex);
   s_exportDone = std::move(done);
+  s_exportStartup = startup;
 }
 
 std::shared_ptr<profiler::Snapshot const> profiler::snapshot()
