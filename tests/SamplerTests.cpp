@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdlib>
 #include <cstring>
 #include <chrono>
 #include <thread>
@@ -71,6 +72,11 @@ struct Handler
   explicit Handler(void (*target)())
   {
     code = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+    if (!code)
+    {
+      std::printf("FAIL: VirtualAlloc for the handler\n");
+      std::exit(1);
+    }
     uint8_t body[] = {
         0x55,                                     // push rbp
         0x48, 0x89, 0xE5,                         // mov rbp, rsp
@@ -94,7 +100,11 @@ struct Handler
     entry->BeginAddress = 0;
     entry->EndAddress = sizeof(body);
     entry->UnwindData = 0x100;
-    RtlAddFunctionTable(entry, 1, reinterpret_cast<DWORD64>(code));
+    if (!RtlAddFunctionTable(entry, 1, reinterpret_cast<DWORD64>(code)))
+    {
+      std::printf("FAIL: RtlAddFunctionTable for the handler\n");
+      std::exit(1);
+    }
     FlushInstructionCache(GetCurrentProcess(), code, 0x1000);
   }
 
@@ -248,6 +258,13 @@ int main()
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
   auto learned = modules::learn(reinterpret_cast<uintptr_t>(s_handler->code) + 0x20);
   CHECK(learned.has_value());
+  if (!learned)
+  {
+    s_phase = 3;
+    sampler::stop();
+    target.join();
+    return finish("sampler");
+  }
   auto handlerMap = modules::build(modules::loaded(), {}, {*learned}, session.buckets);
   session.current = handlerMap.get();
   std::this_thread::sleep_for(std::chrono::milliseconds(20));

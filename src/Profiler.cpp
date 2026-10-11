@@ -231,22 +231,24 @@ namespace
       if (sample.depth == 0)
         continue;
       std::vector<uint32_t> stack;
-      // A zone is a frame of its own, right above the outermost frame of its mod: everything the mod did
-      // in it is under it
+      // A zone is a frame of its own, right above the innermost frame of its mod: what the mod does from
+      // there on is under it. Not the outermost one: a mod hooking the whole frame would put everything
+      // in its zone
       auto zone = sample.zone ? zoneFrameFor(sample.zone) : ZoneFrame{};
-      bool zonePlaced = !zone.frame;
+      int zoneAt = -1;
+      if (zone.frame)
+        for (int frame = 0; frame < sample.depth && frame < MAX_FRAMES && zoneAt < 0; frame++)
+          if (analyzer.map->bucketOf(frame == 0 ? sample.frames[0] : sample.frames[frame] - 1) == zone.bucket)
+            zoneAt = frame;
+      // Its mod isn't on the stack (Geode's code in a zone): above the innermost frame
+      if (zone.frame && zoneAt < 0)
+        zoneAt = 0;
       for (int frame = std::min<int>(sample.depth, MAX_FRAMES) - 1; frame >= 0; frame--)
       {
-        if (!zonePlaced && analyzer.map->bucketOf(frame == 0 ? sample.frames[0] : sample.frames[frame] - 1) == zone.bucket)
-        {
+        if (frame == zoneAt)
           stack.push_back(*zone.frame);
-          zonePlaced = true;
-        }
         stack.push_back(frameFor(sample.frames[frame], frame == 0));
       }
-      // Its mod isn't on the stack (Geode's code in a zone): above the innermost frame
-      if (!zonePlaced)
-        stack.insert(stack.end() - 1, *zone.frame);
       auto time = sample.time;
       // A sample stands for the time until the next one, a few intervals at most (the sampler can be late)
       double weight = 1;
@@ -650,6 +652,7 @@ namespace
     // The new map in, then the old one out once the sampler can't be reading it: no pause
     auto map = modules::build(handles, mods, analyzer.learned, analyzer.buckets);
     s_map.store(map.get(), std::memory_order_seq_cst);
+    symbols::prepare(*map);
     if (analyzer.map)
       letGo(analyzer, std::move(analyzer.map), sampler::iteration());
     analyzer.map = std::move(map);

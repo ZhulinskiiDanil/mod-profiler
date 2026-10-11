@@ -167,6 +167,15 @@ Start: **Sun Oct 11 03:33:17 2026** (the first `date` of the run).
   table), +7 MB in 16 min. The difference was DbgHelp keeping the PDBs it read for names (Geode.pdb is 90 MB
   on disk, a mod's 56 MB), and the 49 MB step in the long soak was one more mod's PDB loaded. Fixed: PDBs are
   unloaded 30 s after the last name lookup. Checked: the table shown 1.485 GB, hidden 50 s later 1.255 GB.
+- 08:58 a 17 minute soak, sampling on, table hidden: 1035 lines, no gap, the game's memory 1.1076 to 1.1086
+  GB (flat), analyzer 0.28%. It was cut short by my own mistake: the soak with sampling off that I stopped
+  with TaskStop left its script running, and that script's last `taskkill` closed the next game. Checked by
+  building while the game ran (the build doesn't close it) and by that script's output file.
+- 09:00 a third review (changes since v0.6.0): no critical issue, all fixed: the build-folder PDB copied when
+  the module is first seen (a copy made later could be of a rebuilt, mismatching PDB), the zone frame above
+  the mod's innermost frame (the outermost would pull a whole frame into the zone of a mod hooking it), PDBs
+  kept while the table uses names, RBP trusted in hook code until its `ret`, a failed copy not loaded in
+  place, the clean-up not following links or deleting a running game's copies, the test failing cleanly.
 - 08:40 zones are frames of their own in exported profiles: `[zone] self test cost` right above its
   function, 1267 ms of 10 s (0.53 ms a frame for 0.5 ms of work). The start's samples kept their zone too.
 

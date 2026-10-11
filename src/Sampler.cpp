@@ -111,7 +111,9 @@ namespace
       auto offset = rva - begin;
       auto pc = reinterpret_cast<uint8_t const*>(context.Rip);
       auto available = std::min<uintptr_t>(8, module.base + module.size - context.Rip);
-      if (prolog >= 0 && offset >= static_cast<uint32_t>(prolog) && !(first && unwind::isFramePointerEpilog(pc, available)) &&
+      // RBP is the frame until `pop rbp` has run: only at the ret (or a tail jmp) after it isn't it
+      bool afterPop = first && available > 0 && (pc[0] == 0xC3 || pc[0] == 0xE9 || (available > 1 && pc[0] == 0xFF && pc[1] == 0x25));
+      if (prolog >= 0 && offset >= static_cast<uint32_t>(prolog) && !afterPop &&
           bounds.holds(context.Rbp, 16) && context.Rbp >= sp)
       {
         auto frame = reinterpret_cast<uintptr_t const*>(context.Rbp);

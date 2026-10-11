@@ -15,6 +15,9 @@ namespace symbols
   // Removes the PDB copies of earlier sessions (a PDB from a build folder is read from a copy, so a mod
   // can be rebuilt while the game runs). Any thread, before the first name
   void cleanUp();
+  // Copies the PDBs from build folders of the map's new modules, before a mod can be rebuilt: a copy
+  // made later would be of a newer PDB, not the loaded DLL's. Analyzer thread
+  void prepare(ModuleMap const& map);
   // Once a second: PDBs no name was asked of for a while are let go. DbgHelp keeps a loaded PDB in memory
   // (Geode.pdb alone is 90 MB on disk), and the names found stay known
   void tick();

@@ -1,3 +1,11 @@
+# v0.8.0
+
+- The game's memory stays flat: DbgHelp kept every PDB it read for names in memory (230 MB with Geode's and two mods'), they're let go 30 seconds after the last name was looked up
+- Zones are frames of their own in saved profiles, right above their mod's innermost frame
+- A build folder's PDB is copied when its mod is first seen, so a mod rebuilt before its first name still gets names; if the copy fails, it isn't opened at all (it would be locked)
+- Exact frames in hook code until its `ret`, not only until its `add rsp`
+- Old PDB copies are cleaned up more carefully (no links followed, only `.pdb` files, not those of a game still running)
+
 # v0.7.0
 
 - A mod can be rebuilt while the game runs: the profiler read its PDB and kept it open, so linking failed. A PDB from a build folder is read from a copy now
