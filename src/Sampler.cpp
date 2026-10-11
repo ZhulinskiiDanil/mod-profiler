@@ -123,18 +123,21 @@ namespace
     auto extent = unwind::frameExtent(image, module.size, function[2], rva - begin);
     if (!extent.ok || !bounds.holds(sp, 8))
       return false;
+    // In an epilog RtlVirtualUnwind reads from RSP, as far as the code says (its add, its pops, the
+    // return address), whatever the unwind info says: that's checked too
+    auto pc = reinterpret_cast<uint8_t const*>(context.Rip);
+    auto codeLeft = std::min<uintptr_t>(32, module.base + module.size - context.Rip);
+    auto reach = unwind::epilogReach(pc, codeLeft);
+    if (reach && !bounds.holds(sp, reach))
+      return false;
+
     auto frame = sp;
     auto bytes = extent.bytes;
-    if (extent.usesFrameRegister)
-    {
-      // In the pops and ret of the epilog the frame register may be the caller's already: unwinding
-      // reads from RSP then, and only a few slots
-      auto pc = reinterpret_cast<uint8_t const*>(context.Rip);
-      if (unwind::isEpilogTail(pc, std::min<uintptr_t>(24, module.base + module.size - context.Rip)))
-        bytes = unwind::EPILOG_TAIL_BYTES;
-      else
-        frame = (&context.Rax)[extent.frameRegister] - extent.frameOffset;
-    }
+    // In the pops and ret of the epilog the frame register may be the caller's already: only RSP counts
+    if (extent.usesFrameRegister && !unwind::isEpilogTail(pc, codeLeft))
+      frame = (&context.Rax)[extent.frameRegister] - extent.frameOffset;
+    else if (extent.usesFrameRegister)
+      bytes = reach;
     if (!bounds.holds(frame, bytes))
       return false;
 

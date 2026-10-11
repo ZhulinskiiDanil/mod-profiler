@@ -14,8 +14,8 @@ struct Process
   static constexpr size_t SIZE = 0x1000;
   std::unique_ptr<uint8_t[]> game{new uint8_t[SIZE]()}, cocos{new uint8_t[SIZE]()}, a{new uint8_t[SIZE]()},
       b{new uint8_t[SIZE]()}, hooks{new uint8_t[SIZE]()}, ntdll{new uint8_t[SIZE]()};
-  uint32_t A = bucket::FIRST_MOD;
-  uint32_t B = bucket::FIRST_MOD + 1;
+  uint32_t A = bucket::LOADER + 1;
+  uint32_t B = bucket::LOADER + 2;
 
   uintptr_t G(uintptr_t offset) const { return reinterpret_cast<uintptr_t>(game.get()) + offset; }
   uintptr_t C(uintptr_t offset) const { return reinterpret_cast<uintptr_t>(cocos.get()) + offset; }

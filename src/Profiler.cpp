@@ -45,6 +45,9 @@ namespace
   Baseline s_baseline;
   // Geode's hooks are in place: generated code can be looked up from then on
   std::atomic<bool> s_hooksReady{false};
+  // When: in sample ticks, and on the steady clock
+  std::atomic<int64_t> s_hooksReadyTicks{0};
+  std::atomic<std::chrono::steady_clock::time_point> s_hooksReadyTime{};
 
   // What the main thread hands to the analyzer, and what it gives back
   std::mutex s_mutex;
@@ -70,6 +73,13 @@ namespace
     uint64_t modsVersion = 0;
     // When the map was made: it's made again every few seconds, see refreshMap
     std::chrono::steady_clock::time_point mapTime;
+    // Maps the sampler may still have been reading when they were taken away
+    struct Retired
+    {
+      std::unique_ptr<ModuleMap> map;
+      uint64_t iteration = 0;
+    };
+    std::vector<Retired> retired;
     Window session;
     // Generated code: what's known, which addresses were already asked about, which to ask about next
     std::vector<modules::LearnedFunction> learned;
@@ -103,7 +113,6 @@ namespace
     std::vector<StartupSample> startupSamples;
     std::vector<uintptr_t> startupFrames;
     std::chrono::steady_clock::time_point startupBegin = std::chrono::steady_clock::now();
-    std::optional<std::chrono::steady_clock::time_point> hooksReadyAt;
     bool startupDone = false;
     Window startup;
 
@@ -115,14 +124,16 @@ namespace
   // A scene shorter than this isn't summed up when the game leaves it
   constexpr double MIN_SCENE_SECONDS = 3;
 
-  // At most this many samples of the start are kept: a minute, about 15 MB at the most
-  constexpr size_t MAX_STARTUP_SAMPLES = 60'000;
+  // At most this many frames of the start's stacks are kept: 16 MB, a minute or more of loading
+  constexpr size_t MAX_STARTUP_FRAMES = 2'000'000;
   constexpr auto STARTUP_LEARNING = std::chrono::seconds(3);
 
+  // The samples taken before the game was loaded
   void keepForStartup(Analyzer& analyzer, Sample const& sample)
   {
-    if (analyzer.hooksReadyAt || analyzer.startupDone || sample.depth == 0 ||
-        analyzer.startupSamples.size() >= MAX_STARTUP_SAMPLES)
+    auto loaded = s_hooksReadyTicks.load();
+    if (analyzer.startupDone || sample.depth == 0 || (loaded && sample.time >= loaded) ||
+        analyzer.startupFrames.size() + sample.depth > MAX_STARTUP_FRAMES)
       return;
     analyzer.startupSamples.push_back({sample.time, sample.depth, analyzer.startupFrames.size()});
     analyzer.startupFrames.insert(analyzer.startupFrames.end(), sample.frames, sample.frames + std::min<int>(sample.depth, MAX_FRAMES));
@@ -265,19 +276,20 @@ namespace
   // The start counted with what's known now: the hooks, the learned handlers
   void countStartup(Analyzer& analyzer)
   {
-    if (analyzer.startupDone || !analyzer.map)
+    if (analyzer.startupDone || !analyzer.map || !s_hooksReady.load())
       return;
-    if (!analyzer.hooksReadyAt)
+    auto loadedAt = s_hooksReadyTime.load();
+    if (std::chrono::steady_clock::now() - loadedAt < STARTUP_LEARNING)
+      return;
+    // Sampling was off while the game loaded: there's no start to tell about
+    if (analyzer.startupSamples.empty())
     {
-      if (s_hooksReady.load())
-        analyzer.hooksReadyAt = std::chrono::steady_clock::now();
+      analyzer.startupDone = true;
       return;
     }
-    if (std::chrono::steady_clock::now() - *analyzer.hooksReadyAt < STARTUP_LEARNING)
-      return;
 
     Window startup;
-    startup.seconds = std::chrono::duration<double>(*analyzer.hooksReadyAt - analyzer.startupBegin).count();
+    startup.seconds = std::chrono::duration<double>(loadedAt - analyzer.startupBegin).count();
     Sample sample;
     for (size_t i = 0; i < analyzer.startupSamples.size(); i++)
     {
@@ -504,7 +516,7 @@ namespace
     }
     attribution.waits = modules::waitFunctions();
     attribution.lockWaits = modules::lockWaitFunctions();
-    attribution.loader = analyzer.buckets.find("geode.loader");
+    attribution.loader = static_cast<int>(bucket::LOADER);
     attribution.finish();
     analyzer.attribution = std::move(attribution);
   }
@@ -514,12 +526,39 @@ namespace
   constexpr auto UNPIN_EVERY = std::chrono::seconds(30);
 
   // Until the sampler has started two samples since: it can't be reading a map it saw before anymore
-  void waitForSampler()
+  // False when the sampler didn't get there in time (a loaded system, a debugger): the map it may still
+  // read is kept then, see retire
+  bool waitForSampler(uint64_t start)
   {
-    auto start = sampler::iteration();
     auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(200);
-    while (sampler::alive() && sampler::iteration() < start + 2 && std::chrono::steady_clock::now() < deadline)
+    while (sampler::alive() && sampler::iteration() < start + 2)
+    {
+      if (std::chrono::steady_clock::now() >= deadline)
+        return false;
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return true;
+  }
+
+  // A map taken from the sampler at `iteration` goes once the sampler can't be reading it: now, or at a
+  // later second if the wait timed out. Its modules stay pinned until then
+  void letGo(Analyzer& analyzer, std::unique_ptr<ModuleMap> map, uint64_t iteration)
+  {
+    if (waitForSampler(iteration))
+      modules::release(*map);
+    else
+      analyzer.retired.push_back({std::move(map), iteration});
+  }
+
+  void freeRetired(Analyzer& analyzer)
+  {
+    auto now = sampler::iteration();
+    std::erase_if(analyzer.retired, [&](auto& retired)
+                  {
+                    if (sampler::alive() && now < retired.iteration + 2)
+                      return false;
+                    modules::release(*retired.map);
+                    return true; });
   }
 
   // The map goes: the sampler is told first, then the modules are unpinned. A module that only the pin
@@ -529,9 +568,7 @@ namespace
     if (!analyzer.map)
       return;
     s_map.store(nullptr, std::memory_order_seq_cst);
-    waitForSampler();
-    modules::release(*analyzer.map);
-    analyzer.map.reset();
+    letGo(analyzer, std::move(analyzer.map), sampler::iteration());
     analyzer.handles.clear();
   }
 
@@ -574,10 +611,7 @@ namespace
     auto map = modules::build(handles, mods, analyzer.learned, analyzer.buckets);
     s_map.store(map.get(), std::memory_order_seq_cst);
     if (analyzer.map)
-    {
-      waitForSampler();
-      modules::release(*analyzer.map);
-    }
+      letGo(analyzer, std::move(analyzer.map), sampler::iteration());
     analyzer.map = std::move(map);
     analyzer.handles = std::move(handles);
     analyzer.modsVersion = version;
@@ -770,10 +804,14 @@ namespace
         snapshot->startup = analyzer.startup;
         snapshot->startupReady = true;
       }
+      // The old one is freed after the lock: its windows' maps take a while
+      std::shared_ptr<profiler::Snapshot const> old = std::move(snapshot);
       {
         std::lock_guard lock(s_mutex);
-        s_snapshot = std::move(snapshot);
+        std::swap(s_snapshot, old);
       }
+      old.reset();
+      freeRetired(analyzer);
 
     }
   }
@@ -847,7 +885,12 @@ void profiler::frame()
     s_frameEndsLost.fetch_add(1, std::memory_order_relaxed);
 }
 
-void profiler::hooksReady() { s_hooksReady = true; }
+void profiler::hooksReady()
+{
+  s_hooksReadyTicks = sampler::now();
+  s_hooksReadyTime = std::chrono::steady_clock::now();
+  s_hooksReady = true;
+}
 
 void profiler::markSpan(std::string label)
 {

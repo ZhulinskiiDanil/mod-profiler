@@ -13,6 +13,7 @@ Buckets::Buckets()
       {"libcocos2d.dll", "Cocos2d"},
       {"other", "Other"},
       {"hooks", "Hook dispatch"},
+      {"geode.loader", "Geode"},
   };
 }
 

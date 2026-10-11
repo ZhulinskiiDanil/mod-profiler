@@ -238,6 +238,30 @@ static void testEpilogTail()
   // The ret isn't in the readable bytes
   CHECK(!unwind::isEpilogTail(popRbpRet, 1));
   CHECK(!unwind::isEpilogTail(ret, 0));
+  // Ending with a tail call, or rep ret
+  uint8_t popJmp[] = {0x5D, 0xE9, 0, 0, 0, 0};
+  uint8_t repRet[] = {0x5D, 0xF3, 0xC3};
+  uint8_t jmpRip[] = {0x5D, 0x48, 0xFF, 0x25, 0, 0, 0, 0};
+  CHECK(unwind::isEpilogTail(popJmp, sizeof(popJmp)));
+  CHECK(unwind::isEpilogTail(repRet, sizeof(repRet)));
+  CHECK(unwind::isEpilogTail(jmpRip, sizeof(jmpRip)));
+}
+
+static void testEpilogReach()
+{
+  // What's read from RSP: the add's bytes, 8 a pop, the return address
+  uint8_t ret[] = {0xC3};
+  uint8_t pops[] = {0x41, 0x5F, 0x5E, 0x5D, 0xC3};
+  uint8_t addSmall[] = {0x48, 0x83, 0xC4, 0x28, 0x5F, 0xC3};
+  uint8_t addLarge[] = {0x48, 0x81, 0xC4, 0xC0, 0x00, 0x00, 0x00, 0x5D, 0xC3};
+  uint8_t notEpilog[] = {0x48, 0x83, 0xC4, 0x28, 0x48, 0x89, 0xC1};
+  CHECK(unwind::epilogReach(ret, sizeof(ret)) == 8);
+  CHECK(unwind::epilogReach(pops, sizeof(pops)) == 3 * 8 + 8);
+  CHECK(unwind::epilogReach(addSmall, sizeof(addSmall)) == 0x28 + 8 + 8);
+  CHECK(unwind::epilogReach(addLarge, sizeof(addLarge)) == 0xC0 + 8 + 8);
+  CHECK(unwind::epilogReach(notEpilog, sizeof(notEpilog)) == 0);
+  // An add before the pops isn't the tail yet
+  CHECK(!unwind::isEpilogTail(addSmall, sizeof(addSmall)));
 }
 
 // ! --- Broken info --- !
@@ -282,6 +306,7 @@ int main()
   testFramePointerProlog();
   testFramePointerEpilog();
   testEpilogTail();
+  testEpilogReach();
   testBroken();
   return finish("unwind");
 }

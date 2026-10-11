@@ -7,7 +7,8 @@
 static void testFixedBuckets()
 {
   Buckets buckets;
-  CHECK(buckets.size() == bucket::FIRST_MOD);
+  CHECK(buckets.size() == bucket::LOADER + 1);
+  CHECK(buckets[bucket::LOADER].id == "geode.loader");
   CHECK(buckets[bucket::HOOKS].id == "hooks");
   CHECK(buckets[bucket::HOOKS].name == "Hook dispatch");
   CHECK(buckets[bucket::GAME].id == "GeometryDash.exe");
@@ -20,7 +21,7 @@ static void testBucketIndex()
   Buckets buckets;
   auto a = buckets.index("zhulis.a", "A");
   auto b = buckets.index("zhulis.b", "");
-  CHECK(a == bucket::FIRST_MOD && b == bucket::FIRST_MOD + 1);
+  CHECK(a == bucket::LOADER + 1 && b == bucket::LOADER + 2);
   // The same ID is the same bucket
   CHECK(buckets.index("zhulis.a", "Other name") == a);
   CHECK(buckets[a].name == "A");

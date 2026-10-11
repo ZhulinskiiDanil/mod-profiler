@@ -39,9 +39,12 @@ namespace unwind
   // RBP isn't the frame anymore (or soon won't be)
   bool isFramePointerEpilog(uint8_t const* pc, size_t available) noexcept;
 
-  // Whether `pc` is at the pops and ret ending an epilog (pops, then ret, nothing else): what's left to
+  // How many bytes from RSP unwinding reads when `pc` is in an epilog, or 0 when it isn't one: an
+  // optional `add rsp, imm`, then pops, then `ret`, `rep ret` or a tail call's `jmp`. That's what
+  // RtlVirtualUnwind takes for an epilog: it then reads from RSP, whatever the unwind info says
+  uint64_t epilogReach(uint8_t const* pc, size_t available) noexcept;
+
+  // Whether `pc` is at the pops and ret (or jmp) ending an epilog, past its `add rsp`: what's left to
   // unwind is read from RSP, a few registers and the return address, whatever the frame register says
   bool isEpilogTail(uint8_t const* pc, size_t available) noexcept;
-  // The most an epilog's tail reads from RSP: every nonvolatile register popped, then the return address
-  inline constexpr uint64_t EPILOG_TAIL_BYTES = 9 * 8;
 } // namespace unwind

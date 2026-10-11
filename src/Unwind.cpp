@@ -87,23 +87,48 @@ bool unwind::isFramePointerEpilog(uint8_t const* pc, size_t available) noexcept
   return available >= 3 && pc[0] == 0x48 && (pc[1] == 0x81 || pc[1] == 0x83) && pc[2] == 0xC4;
 }
 
-bool unwind::isEpilogTail(uint8_t const* pc, size_t available) noexcept
+uint64_t unwind::epilogReach(uint8_t const* pc, size_t available) noexcept
 {
-  // Pops, then ret: only then does RtlVirtualUnwind take it for an epilog and read from RSP. A pop in
-  // the middle of a function is unwound with the frame register, which must be checked then
   size_t at = 0;
+  uint64_t reach = 0;
+  // add rsp, imm8 / imm32
+  if (available >= 4 && pc[0] == 0x48 && pc[1] == 0x83 && pc[2] == 0xC4)
+  {
+    reach = pc[3];
+    at = 4;
+  }
+  else if (available >= 7 && pc[0] == 0x48 && pc[1] == 0x81 && pc[2] == 0xC4)
+  {
+    reach = read32(pc + 3);
+    at = 7;
+  }
+
+  // Pops: a pop in the middle of a function (no ret or jmp after it) isn't an epilog, and is
+  // unwound with the unwind info, which must be checked then
   for (int pops = 0; pops <= 8 && at < available; pops++)
   {
-    if (pc[at] == 0xC3)
-      return true;
-    if (pc[at] >= 0x58 && pc[at] <= 0x5F)
+    auto byte = pc[at];
+    bool ret = byte == 0xC3 || (byte == 0xF3 && at + 1 < available && pc[at + 1] == 0xC3);
+    // jmp rel32, jmp [rip + disp32], with REX.W too: a tail call
+    bool jmp = byte == 0xE9 || (byte == 0xFF && at + 1 < available && pc[at + 1] == 0x25) ||
+               (byte == 0x48 && at + 2 < available && pc[at + 1] == 0xFF && pc[at + 2] == 0x25);
+    if (ret || jmp)
+      return reach + 8;
+    if (byte >= 0x58 && byte <= 0x5F)
       at += 1;
-    else if (pc[at] == 0x41 && at + 1 < available && pc[at + 1] >= 0x58 && pc[at + 1] <= 0x5F)
+    else if (byte == 0x41 && at + 1 < available && pc[at + 1] >= 0x58 && pc[at + 1] <= 0x5F)
       at += 2;
     else
-      return false;
+      return 0;
+    reach += 8;
   }
-  return false;
+  return 0;
+}
+
+bool unwind::isEpilogTail(uint8_t const* pc, size_t available) noexcept
+{
+  bool add = available >= 3 && pc[0] == 0x48 && (pc[1] == 0x83 || pc[1] == 0x81) && pc[2] == 0xC4;
+  return !add && epilogReach(pc, available) > 0;
 }
 
 unwind::Extent unwind::frameExtent(uint8_t const* image, size_t imageSize, uint32_t unwindRva, uint32_t offset) noexcept

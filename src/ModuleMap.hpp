@@ -16,6 +16,8 @@ namespace bucket
   inline constexpr uint32_t COCOS = 1;
   inline constexpr uint32_t OTHER = 2;
   inline constexpr uint32_t HOOKS = 3;
+  // Geode itself, a mod like the others but always there: some rules need to know it
+  inline constexpr uint32_t LOADER = 4;
   inline constexpr uint32_t FIRST_MOD = 4;
 } // namespace bucket
 

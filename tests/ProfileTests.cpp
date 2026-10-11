@@ -6,8 +6,8 @@
 #include <initializer_list>
 
 // The first two mods' buckets
-constexpr uint32_t A = bucket::FIRST_MOD;
-constexpr uint32_t B = bucket::FIRST_MOD + 1;
+constexpr uint32_t A = bucket::LOADER + 1;
+constexpr uint32_t B = bucket::LOADER + 2;
 
 // GD at 0x1000, cocos at 0x2000, mod A at 0x3000, mod B at 0x4000, a system DLL at 0x5000
 static ModuleMap sampleMap()

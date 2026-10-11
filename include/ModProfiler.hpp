@@ -18,6 +18,8 @@
 #include <Geode/loader/Dispatch.hpp>
 #include <Geode/loader/Mod.hpp>
 
+#include <atomic>
+
 namespace mod_profiler
 {
   namespace detail
@@ -30,15 +32,20 @@ namespace mod_profiler
       void (*leave)();
     };
 
+    // Asked for until it's there (a mod can open a zone before Mod Profiler loads), a few dozen times at most
     inline Api const* api()
     {
-      static Api const* cached = []
-      {
-        Api const* api = nullptr;
-        geode::Dispatch<Api const**>("zhulis.mod-profiler/api").send(&api);
+      static std::atomic<Api const*> cached{nullptr};
+      static std::atomic<int> tries{0};
+      if (auto api = cached.load(std::memory_order_acquire))
         return api;
-      }();
-      return cached;
+      if (tries.fetch_add(1, std::memory_order_relaxed) >= 64)
+        return nullptr;
+      Api const* api = nullptr;
+      geode::Dispatch<Api const**>("zhulis.mod-profiler/api").send(&api);
+      if (api)
+        cached.store(api, std::memory_order_release);
+      return api;
     }
   } // namespace detail
 

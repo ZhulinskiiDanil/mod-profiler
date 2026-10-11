@@ -165,6 +165,19 @@ namespace
     void update(float) override
     {
       profiler::frame();
+      // Hooks made after the game loaded (a mod hooking lazily): sent again when their count changes
+      if (++m_frames % 600 == 0)
+      {
+        size_t hooks = 0;
+        for (auto mod : Loader::get()->getAllMods())
+          if (mod->isLoaded())
+            hooks += mod->getHooks().size();
+        if (hooks != m_hooks)
+        {
+          m_hooks = hooks;
+          profiler::setHooks(loadedHooks());
+        }
+      }
       // The scene's name when it changes, from its layer. A transition is still the old scene's
       auto scene = CCDirector::get()->getRunningScene();
       if (scene == m_scene || !scene || typeinfo_cast<CCTransitionScene*>(scene))
@@ -178,6 +191,8 @@ namespace
   private:
     // Only compared, never used: it may be gone
     CCScene* m_scene = nullptr;
+    uint64_t m_frames = 0;
+    size_t m_hooks = 0;
   };
 } // namespace
 

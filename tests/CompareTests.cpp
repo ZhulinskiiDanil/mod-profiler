@@ -8,9 +8,9 @@
 static bool near(double a, double b) { return std::fabs(a - b) < 1e-9; }
 static bool contains(std::string const& text, char const* part) { return text.find(part) != std::string::npos; }
 
-constexpr uint32_t A = bucket::FIRST_MOD;
-constexpr uint32_t B = bucket::FIRST_MOD + 1;
-constexpr uint32_t C = bucket::FIRST_MOD + 2;
+constexpr uint32_t A = bucket::LOADER + 1;
+constexpr uint32_t B = bucket::LOADER + 2;
+constexpr uint32_t C = bucket::LOADER + 3;
 
 static ModuleMap sampleMap()
 {
