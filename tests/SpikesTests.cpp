@@ -25,6 +25,23 @@ static void testSlowFrames()
   CHECK(next.size() == 1 && next[0].start == 300);
 }
 
+static void testRestart()
+{
+  // Ends 10 and 300 with lost ones between: not a frame of 290
+  FrameClock clock;
+  clock.add(0);
+  clock.add(10);
+  clock.add(300);
+  clock.restart();
+  CHECK(clock.oldestStart() == 300);
+  CHECK(clock.slowFrames(50).empty());
+  clock.add(320);
+  CHECK(clock.slowFrames(10).size() == 1);
+  FrameClock empty;
+  empty.restart();
+  CHECK(empty.oldestStart() == 0);
+}
+
 static void testNoFrames()
 {
   FrameClock clock;
@@ -122,6 +139,7 @@ static void testEmpty()
 int main()
 {
   testSlowFrames();
+  testRestart();
   testNoFrames();
   testCulprit();
   testNoCulprit();

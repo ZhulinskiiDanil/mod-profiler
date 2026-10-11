@@ -206,13 +206,15 @@ namespace
     {
       wait(timer, next);
 
-      auto map = currentMap->load(std::memory_order_acquire);
+      // seq_cst with the analyzer's store and its read of the iteration: a map it took away is never
+      // loaded after the iteration it waited for
+      auto map = currentMap->load(std::memory_order_seq_cst);
       Sample* slot = map ? ring->reserve() : nullptr;
       if (!slot)
       {
         if (map)
           s_dropped.fetch_add(1, std::memory_order_relaxed);
-        s_iteration.fetch_add(1, std::memory_order_release);
+        s_iteration.fetch_add(1, std::memory_order_seq_cst);
         continue;
       }
       slot->depth = 0;
@@ -223,7 +225,7 @@ namespace
       QueryPerformanceCounter(&start);
       if (SuspendThread(s_mainThread) == static_cast<DWORD>(-1))
       {
-        s_iteration.fetch_add(1, std::memory_order_release);
+        s_iteration.fetch_add(1, std::memory_order_seq_cst);
         continue;
       }
 
@@ -252,7 +254,7 @@ namespace
       slot->suspendTicks = static_cast<uint32_t>(std::min<int64_t>(end.QuadPart - start.QuadPart, UINT32_MAX));
       slot->contextTicks = static_cast<uint32_t>(std::min<int64_t>(stopped.QuadPart - start.QuadPart, UINT32_MAX));
       ring->commit();
-      if (s_iteration.fetch_add(1, std::memory_order_release) % 64 == 0)
+      if (s_iteration.fetch_add(1, std::memory_order_seq_cst) % 64 == 0)
         s_cpuTime.store(sampler::threadCpuTime(), std::memory_order_relaxed);
     }
 
@@ -307,7 +309,7 @@ void sampler::stop()
 bool sampler::running() { return s_running.load(); }
 bool sampler::alive() { return s_alive.load(std::memory_order_acquire); }
 
-uint64_t sampler::iteration() { return s_iteration.load(std::memory_order_acquire); }
+uint64_t sampler::iteration() { return s_iteration.load(std::memory_order_seq_cst); }
 uint64_t sampler::dropped() { return s_dropped.load(std::memory_order_relaxed); }
 uint64_t sampler::cpuTime() { return s_cpuTime.load(std::memory_order_relaxed); }
 

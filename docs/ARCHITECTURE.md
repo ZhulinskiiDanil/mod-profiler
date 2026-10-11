@@ -7,8 +7,9 @@ A map of the code and the reasons behind the parts that aren't obvious.
 1. **Sampler.cpp**: a thread wakes up about every millisecond (a high resolution waitable timer, no change to the system timer). It reserves a slot in the ring, then `SuspendThread` on the main thread, `GetThreadContext`, walks the stack into the slot, `ResumeThread`.
 2. **Ring.hpp**: the slot is committed. The ring is single writer, single reader, made once: no allocations or locks after that.
 3. **Profiler.cpp**: once a second the analyzer thread empties the ring. Each sample's addresses go to buckets through the **ModuleMap**. **Attribution** decides whose own time it is, if anyone's, and the **Profile** counts it: inclusive once a sample for every mod on the stack, self by the first frame, own for one mod at most.
-4. The second is logged, kept with the last 4 for the table, and merged into the session. `profiler::snapshot` hands a copy to the main thread.
-5. **Overlay.cpp** asks for the snapshot twice a second while the table is shown.
+4. The samples are also held for 10 seconds. The frames that ended meanwhile (their end times come from the main thread through a second ring) are checked against the threshold, and a slow frame's samples are cut out of the held ones: **Spikes.cpp** finds its culprit.
+5. The second is logged, kept with the last 4 for the table, and merged into the session and the span since the last marker. `profiler::snapshot` hands a copy to the main thread.
+6. **Overlay.cpp** asks for the snapshot twice a second while the table is shown. An export or a span summary is asked for with a flag, and done by the analyzer at its next second.
 
 ## Files
 
@@ -19,15 +20,20 @@ A map of the code and the reasons behind the parts that aren't obvious.
 | `Profiler.cpp` | The analyzer thread: module maps, learning generated code, windows of samples, the log line, names |
 | `Modules.cpp` | Builds a ModuleMap from the loaded modules and the learned generated code, pins modules, the wait functions |
 | `Symbols.cpp` | Function names with DbgHelp |
-| `Overlay.cpp` | The table in the game |
+| `Overlay.cpp` | The table in the game, its buttons, saving a profile |
+| `BaselineFile.cpp` | The baseline in the save folder |
+| `LoggerLink.cpp`, `ImprovedLogger.hpp` | Improved Logger: pinned numbers, its markers. The header is a copy of its API |
 | `ModuleMap.cpp` | Address to module and bucket, binary searches, function tables, where a function starts |
 | `Attribution.cpp` | Whose own time a sample is, idle, between frames |
 | `Unwind.cpp` | How far up the stack unwinding a frame reads, where a split function starts |
 | `Code.cpp` | Whether a value on the stack is a return address (a call right before it) |
-| `Profile.cpp` | Counting samples into buckets and places, shares, the diagnostics line |
+| `Profile.cpp` | Counting samples into buckets and places, shares, the diagnostics and summary lines |
+| `Spikes.cpp` | Slow frames from the frames' end times, and their culprits |
+| `Compare.cpp` | A baseline from a session, and what changed since |
+| `Speedscope.cpp` | The profile file for speedscope.app |
 | `Ring.hpp`, `Sample.hpp` | The ring and what goes into it |
 
-`Ring`, `ModuleMap`, `Attribution`, `Unwind`, `Code` and `Profile` include neither Windows nor Geode, so `tests/` builds them alone (CI runs them with GCC too).
+`Ring`, `ModuleMap`, `Attribution`, `Unwind`, `Code`, `Profile`, `Spikes`, `Compare` and `Speedscope` include neither Windows nor Geode, so `tests/` builds them alone (CI runs them with GCC too).
 
 ## Decisions worth knowing
 
@@ -41,6 +47,11 @@ A map of the code and the reasons behind the parts that aren't obvious.
 - **Idle and between frames aren't anyone's.** A sample in the system call stub of a wait function is idle. A sample in `CCApplication::run` but not in `CCDirector::mainLoop` or `CCEGLView::pollEvents` (or a detour of them) is between frames. Mega Hack's frame limiter spins on `QueryPerformanceCounter` there: before this it was 90% of every list. `mainLoop` isn't exported, it's read from the director's vtable.
 - **Frames are counted from a scheduler callback, not a hook.** A hook on the frame would put this mod on every stack under it.
 - **A late wake-up doesn't make the next ones come sooner.** Catching up would sample the same moment several times.
+- **A slow frame's culprit needs a fair share.** The mod with the most own samples in the frame is the culprit only with 20% of them or more. Otherwise it's the game's (or nobody's: waiting).
+- **The baseline is kept by mod ID, not bucket number.** Bucket numbers follow the order modules are seen in, which changes between launches.
+- **Improved Logger is optional at build time too.** Its API header is copied in (its docs suggest it): the mod builds without it, and the calls do nothing when it's not there. Its markers are seen by listening to its marker keybind, there's no event for them.
+- **The table stays English.** The game's bitmap fonts have the 95 ASCII characters only. A TTF label would render its texture again on every change, a cost the profiler would see in its own numbers.
+- **The self test is in the release build.** `MOD_PROFILER_SELFTEST=1` in the environment, nothing otherwise. It's the only way to check the slow frames end to end without someone playing.
 - **DbgHelp gets a session handle of its own.** Geode's crash handler calls `SymInitialize` with the process handle: a session on the same handle would break its stack traces. Modules are loaded from their files with the base they're at, PDBs found where they were built.
 
 ## Building and trying

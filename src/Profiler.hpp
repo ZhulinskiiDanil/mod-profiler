@@ -7,6 +7,7 @@
 #include "Profile.hpp"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -90,5 +91,9 @@ namespace profiler
     // The latest last
     std::vector<SlowFrame> slowFrames;
   };
-  Snapshot snapshot();
+  // Whether the snapshot needs the names of the busiest places (the table is shown): naming loads
+  // PDBs, which isn't done for nobody
+  void setNamesWanted(bool wanted);
+  // Made by the analyzer once a second and not changed after: the main thread only copies the pointer
+  std::shared_ptr<Snapshot const> snapshot();
 } // namespace profiler

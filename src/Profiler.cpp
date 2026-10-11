@@ -22,16 +22,18 @@ using namespace geode::prelude;
 
 namespace
 {
-  // About 8 seconds of samples at 1 ms: the analyzer empties it every second
-  Ring<Sample> s_ring(8192);
+  // About 4 seconds of samples at 1 ms: the analyzer empties it every second
+  Ring<Sample> s_ring(4096);
   std::atomic<ModuleMap const*> s_map{nullptr};
   std::atomic<uint64_t> s_frames{0};
   std::atomic<bool> s_logDiagnostics{true};
   std::atomic<bool> s_logStacks{false};
   std::atomic<double> s_spikeMillis{50};
   std::atomic<bool> s_logSpikes{true};
+  std::atomic<bool> s_namesWanted{false};
   // When each frame ended, from the main thread
   Ring<int64_t> s_frameEnds(4096);
+  std::atomic<uint64_t> s_frameEndsLost{0};
   // An export asked for, under s_mutex
   std::function<void(std::string const&, std::string const&)> s_exportDone;
   // A span asked for, under s_mutex: its label
@@ -53,16 +55,9 @@ namespace
   std::vector<uintptr_t> s_frameFunctions;
   // At most this many unknown addresses are looked up, in case some code is generated all the time
   constexpr size_t MAX_TRIED = 20000;
-  profiler::Snapshot s_snapshot;
+  std::shared_ptr<profiler::Snapshot const> s_snapshot = std::make_shared<profiler::Snapshot>();
 
   // ! --- The analyzer thread's own state --- !
-
-  struct Retired
-  {
-    std::unique_ptr<ModuleMap> map;
-    // The sampler's iteration when it was swapped out
-    uint64_t iteration = 0;
-  };
 
   struct Analyzer
   {
@@ -70,7 +65,8 @@ namespace
     std::unique_ptr<ModuleMap> map;
     std::vector<void*> handles;
     uint64_t modsVersion = 0;
-    std::vector<Retired> retired;
+    // When the map was made: it's made again every few seconds, see refreshMap
+    std::chrono::steady_clock::time_point mapTime;
     Window session;
     // Generated code: what's known, which addresses were already asked about, which to ask about next
     std::vector<modules::LearnedFunction> learned;
@@ -83,6 +79,7 @@ namespace
     // The last seconds of samples, for cutting the slow frames out of
     std::deque<Sample> held;
     FrameClock clock;
+    uint64_t frameEndsLost = 0;
     std::deque<profiler::SlowFrame> slowFrames;
     // Since the last marker
     Window span;
@@ -178,7 +175,9 @@ namespace
       return;
 
     std::string file, error;
-    if (analyzer.held.empty())
+    if (!analyzer.map)
+      error = "Sampling is off";
+    else if (analyzer.held.empty())
       error = "No samples yet";
     else
     {
@@ -208,11 +207,15 @@ namespace
       std::vector<Sample const*> samples;
       std::vector<Verdict> verdicts;
       for (auto const& sample : analyzer.held)
-        if (sample.time >= frame.start && sample.time < frame.end)
+        // A sample without a stack (the thread couldn't be read) isn't anyone's time
+        if (sample.depth > 0 && sample.time >= frame.start && sample.time < frame.end)
         {
           samples.push_back(&sample);
           verdicts.push_back(attribute(sample, *analyzer.map, analyzer.attribution));
         }
+      // Sampling was off, or the frame is older than the held samples: nothing to say about it
+      if (samples.empty())
+        continue;
       auto spike = makeSpike(frame, ticksPerMilli, samples, verdicts, 3);
 
       profiler::SlowFrame slow{
@@ -262,6 +265,9 @@ namespace
   {
     constexpr size_t PER_MOD = 8;
     std::unordered_map<uintptr_t, std::string> names;
+    // Sampling is off: no map to name anything with. Or the table is hidden: nobody to name it for
+    if (!analyzer.map || !s_namesWanted.load(std::memory_order_relaxed))
+      return names;
     auto const& buckets = window.profile.buckets();
     for (uint32_t bucket = bucket::FIRST_MOD; bucket < buckets.size(); bucket++)
     {
@@ -313,9 +319,41 @@ namespace
     analyzer.attribution = std::move(attribution);
   }
 
-  // A new map when a module was loaded or unloaded, the mods list came, or generated code was learned
+  // A map pins its modules. Made again this often anyway, so a module some mod unloaded, which only
+  // the pin kept, goes away
+  constexpr auto MAP_LIFETIME = std::chrono::seconds(5);
+
+  // Until the sampler has started two samples since: it can't be reading a map it saw before anymore
+  void waitForSampler()
+  {
+    auto start = sampler::iteration();
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(200);
+    while (sampler::alive() && sampler::iteration() < start + 2 && std::chrono::steady_clock::now() < deadline)
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+
+  // The map goes: the sampler is told first, then the modules are unpinned. A module that only the pin
+  // kept loaded unloads right here, while nothing reads it
+  void dropMap(Analyzer& analyzer)
+  {
+    if (!analyzer.map)
+      return;
+    s_map.store(nullptr, std::memory_order_seq_cst);
+    waitForSampler();
+    modules::release(*analyzer.map);
+    analyzer.map.reset();
+    analyzer.handles.clear();
+  }
+
+  // A new map when a module was loaded or unloaded, the mods list came, generated code was learned,
+  // or the map is a few seconds old. None while sampling is off: no module stays pinned then
   void refreshMap(Analyzer& analyzer)
   {
+    if (!sampler::running())
+    {
+      dropMap(analyzer);
+      return;
+    }
     auto handles = modules::loaded();
     std::vector<modules::ModBinary> mods;
     std::vector<modules::LearnedFunction> learned;
@@ -327,28 +365,23 @@ namespace
       learned.swap(s_learnedInbox);
     }
     analyzer.learned.insert(analyzer.learned.end(), learned.begin(), learned.end());
-    if (analyzer.map && handles == analyzer.handles && version == analyzer.modsVersion && learned.empty())
+    auto now = std::chrono::steady_clock::now();
+    if (analyzer.map && handles == analyzer.handles && version == analyzer.modsVersion && learned.empty() &&
+        now - analyzer.mapTime < MAP_LIFETIME)
       return;
 
-    auto map = modules::build(handles, mods, analyzer.learned, analyzer.buckets);
-    s_map.store(map.get(), std::memory_order_release);
     if (analyzer.map)
-      analyzer.retired.push_back({std::move(analyzer.map), sampler::iteration()});
+    {
+      dropMap(analyzer);
+      // Without the pins, a module may be gone
+      handles = modules::loaded();
+    }
+    auto map = modules::build(handles, mods, analyzer.learned, analyzer.buckets);
+    s_map.store(map.get(), std::memory_order_seq_cst);
     analyzer.map = std::move(map);
     analyzer.handles = std::move(handles);
     analyzer.modsVersion = version;
-  }
-
-  // Maps the sampler can't be reading anymore: it has finished the sample it was in when they were swapped
-  void freeRetired(Analyzer& analyzer, bool all)
-  {
-    auto now = sampler::iteration();
-    std::erase_if(analyzer.retired, [&](Retired& retired)
-                  {
-                    if (!all && now < retired.iteration + 2)
-                      return false;
-                    modules::release(*retired.map);
-                    return true; });
+    analyzer.mapTime = now;
   }
 
   // Addresses outside every module, to look up on the main thread once
@@ -428,12 +461,19 @@ namespace
         analyzer.clock.add(*end);
         s_frameEnds.pop();
       }
+      // Frame ends the ring had no room for: two ends with a lost one between would look like one long
+      // frame, so the clock starts again from the last end
+      if (auto lost = s_frameEndsLost.load(); lost != analyzer.frameEndsLost)
+      {
+        analyzer.frameEndsLost = lost;
+        analyzer.clock.restart();
+      }
       if (analyzer.map)
       {
         analyze(analyzer, window);
         findSlowFrames(analyzer);
-        exportIfAsked(analyzer);
       }
+      exportIfAsked(analyzer);
       learnUnknown(analyzer);
       refreshMap(analyzer);
 
@@ -497,17 +537,19 @@ namespace
       for (auto const& second : analyzer.recent)
         merge(recent, second);
       auto names = nameTopPlaces(analyzer, recent);
+      // Made outside the lock, swapped in under it
+      auto snapshot = std::make_shared<profiler::Snapshot>();
+      snapshot->last = std::move(window);
+      snapshot->recent = std::move(recent);
+      snapshot->session = analyzer.session;
+      snapshot->buckets = analyzer.buckets;
+      snapshot->names = std::move(names);
+      snapshot->slowFrames.assign(analyzer.slowFrames.begin(), analyzer.slowFrames.end());
       {
         std::lock_guard lock(s_mutex);
-        s_snapshot.last = std::move(window);
-        s_snapshot.recent = std::move(recent);
-        s_snapshot.session = analyzer.session;
-        s_snapshot.buckets = analyzer.buckets;
-        s_snapshot.names = std::move(names);
-        s_snapshot.slowFrames.assign(analyzer.slowFrames.begin(), analyzer.slowFrames.end());
+        s_snapshot = std::move(snapshot);
       }
 
-      freeRetired(analyzer, !sampler::alive());
     }
   }
 } // namespace
@@ -568,6 +610,8 @@ void profiler::frame()
     *slot = sampler::now();
     s_frameEnds.commit();
   }
+  else
+    s_frameEndsLost.fetch_add(1, std::memory_order_relaxed);
 }
 
 void profiler::hooksReady() { s_hooksReady = true; }
@@ -577,6 +621,8 @@ void profiler::markSpan(std::string label)
   std::lock_guard lock(s_mutex);
   s_spanLabel = std::move(label);
 }
+
+void profiler::setNamesWanted(bool wanted) { s_namesWanted = wanted; }
 
 void profiler::resetSession() { s_resetSession = true; }
 
@@ -592,7 +638,7 @@ void profiler::requestExport(std::function<void(std::string const& file, std::st
   s_exportDone = std::move(done);
 }
 
-profiler::Snapshot profiler::snapshot()
+std::shared_ptr<profiler::Snapshot const> profiler::snapshot()
 {
   std::lock_guard lock(s_mutex);
   return s_snapshot;

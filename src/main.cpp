@@ -97,7 +97,8 @@ namespace
 
   // MOD_PROFILER_SELFTEST=1 at launch: one slow frame of this mod's own, 40 seconds after the game
   // loaded, and the profile saved 5 seconds later, so a check can see the slow frame found, blamed on
-  // the right mod and function, and in the file
+  // the right mod and function, and in the file. MOD_PROFILER_SELFTEST=play opens the first main level
+  // 20 seconds in too: nobody plays it, the player dies and it starts again, the game's real work
   void __declspec(noinline) selfTestSlowFrame()
   {
     auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(120);
@@ -111,6 +112,12 @@ namespace
   {
   public:
     void run(float) { selfTestSlowFrame(); }
+    void play(float)
+    {
+      auto level = GameLevelManager::get()->getMainLevel(1, false);
+      log::info("Self test: opening {}", std::string(level->m_levelName));
+      CCDirector::get()->replaceScene(CCTransitionFade::create(0.5f, PlayLayer::scene(level, false, false)));
+    }
     void save(float) { overlay::saveProfile(); }
   };
 
@@ -158,10 +165,13 @@ $on_game(Loaded)
   CCDirector::get()->getScheduler()->scheduleUpdateForTarget(new FrameCounter(), 0, false);
 
   char value[8] = {};
-  if (GetEnvironmentVariableA("MOD_PROFILER_SELFTEST", value, sizeof(value)) && value[0] == '1')
+  auto selfTest = GetEnvironmentVariableA("MOD_PROFILER_SELFTEST", value, sizeof(value)) ? std::string(value) : std::string();
+  if (selfTest == "1" || selfTest == "play")
   {
     // Then the profile with it in, saved
     auto test = new SelfTest();
+    if (selfTest == "play")
+      CCDirector::get()->getScheduler()->scheduleSelector(schedule_selector(SelfTest::play), test, 0, 0, 20, false);
     CCDirector::get()->getScheduler()->scheduleSelector(schedule_selector(SelfTest::run), test, 0, 0, 40, false);
     CCDirector::get()->getScheduler()->scheduleSelector(schedule_selector(SelfTest::save), test, 0, 0, 45, false);
   }

@@ -25,6 +25,12 @@ public:
   std::vector<Frame> slowFrames(int64_t threshold);
   // When the oldest frame not looked at yet started, or 0: samples before it aren't needed anymore
   int64_t oldestStart() const { return m_ends.empty() ? 0 : m_ends.front(); }
+  // Ends were lost: only the last one is kept, as the next frame's start
+  void restart()
+  {
+    while (m_ends.size() > 1)
+      m_ends.pop_front();
+  }
 
 private:
   std::deque<int64_t> m_ends;

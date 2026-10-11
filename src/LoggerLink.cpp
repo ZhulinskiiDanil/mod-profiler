@@ -21,7 +21,8 @@ namespace
     {
       if (!s_watching)
         return;
-      auto snapshot = profiler::snapshot();
+      auto shared = profiler::snapshot();
+      auto const& snapshot = *shared;
       auto const& window = snapshot.recent;
       auto const& profile = window.profile;
       if (profile.samples() == 0 || window.frames == 0)

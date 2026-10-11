@@ -1,3 +1,12 @@
+# v0.3.0
+
+- Slow frames: every frame over 50 ms (a setting) is looked into, with the mod whose time it was, its function, its hook and a stack. At the bottom of the table and in the log
+- `Ctrl+Shift+O` saves the last 10 seconds of stacks for speedscope.app
+- A baseline: `[set baseline]` keeps the session's numbers through restarts, the table shows each mod's own time then next to now, red when it got worse. `[reset]` and a view of the whole session
+- Improved Logger, optional: the numbers pinned in its console, its marker key logs the profile since the last marker, compared with the baseline
+- What the profiler costs, in the table and the log: how long the main thread stood still a second, the CPU of its threads
+- The table's buttons and a column for the baseline. README in Russian too (the game's fonts have no Cyrillic, so the table stays English)
+
 # v0.2.0
 
 - A table in the game (`Ctrl+Shift+P`): every mod's own time a frame, its own and inclusive share of the last 5 seconds

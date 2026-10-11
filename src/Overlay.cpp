@@ -136,7 +136,8 @@ namespace
     {
       if (!isVisible())
         return;
-      auto snapshot = profiler::snapshot();
+      auto shared = profiler::snapshot();
+      auto const& snapshot = *shared;
       auto const& window = m_session ? snapshot.session : snapshot.recent;
       auto const& baseline = baseline_file::current();
       auto const& profile = window.profile;
@@ -275,7 +276,8 @@ namespace
 
     void onBaseline(CCObject*)
     {
-      auto snapshot = profiler::snapshot();
+      auto shared = profiler::snapshot();
+      auto const& snapshot = *shared;
       if (snapshot.session.seconds < MIN_BASELINE_SECONDS)
       {
         Notification::create("Play a few seconds more first", NotificationIcon::Warning)->show();
@@ -416,6 +418,7 @@ void overlay::setVisible(bool visible)
     return;
   place();
   s_overlay->setVisible(visible);
+  profiler::setNamesWanted(visible);
   if (visible)
     s_overlay->refresh(0);
   Mod::get()->setSavedValue("overlay-visible", visible);

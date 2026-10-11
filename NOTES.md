@@ -33,6 +33,19 @@ Start: **Sun Oct 11 03:33:17 2026** (the first `date` of the run).
 - **Releases are GitHub pre-releases while the version is 0.x.** Zhulis Mods Manager shows them only with
   *Include pre-releases* on: that is its beta channel. The registry entry says "Beta" too.
 
+- **Localization (backlog 9) is only half possible: the table stays English, the README is in Russian too.**
+  GD's bitmap fonts (`chatFont`, `bigFont`) have 95 ASCII glyphs, no Cyrillic. A TTF label would render its
+  texture again on every update, twice a second for 50 labels: a cost the profiler would show as its own.
+- **Improved Logger (backlog 6) is a soft dependency.** `"required": false` in mod.json, its API header copied
+  in, as its docs suggest, so the mod builds and runs without it. It has no event for its markers, so the
+  profiler listens to its marker keybind (`Ctrl+Shift+M` in the game). A marker set in its console with `b`
+  isn't seen. `geode build` warns that the logger isn't on the Geode Index: fine for GitHub releases, but it
+  matters if the profiler goes to the Index.
+- **The comparison (backlog 7) is against a saved session, kept by mod ID.** Saved to the mod's save folder, so
+  it survives a restart and a mod update, which is what a before/after needs.
+- **Keys and clicks in the checks are real.** `SendInput` with scan codes (GLFW reads keys by scan code, so
+  `SendKeys` did nothing) and absolute mouse clicks on the table's buttons.
+
 ## Log
 
 - 03:33 start. Read improved-geode-logger (style, CMake, tests, CI) and zhulis-mods-manager (registry, pre-releases).
