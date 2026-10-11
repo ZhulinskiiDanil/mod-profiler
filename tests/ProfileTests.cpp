@@ -319,7 +319,7 @@ static void testStartupLine()
   window.profile.add(stack({0x5010}), map, &attribution);
   window.profile.add(stack({0x2010}), map, &attribution);
   auto line = startupLine(window, sampleBuckets(), 3);
-  CHECK(contains(line, "10.0 s, waiting 20%, mods' own time 6.00 s (60.0%) | own: A 4.00 s (40.0%), B 2.00 s (20.0%)"));
+  CHECK(contains(line, "10.0 s, waiting 20%, mods' and hooks' own time 6.00 s (60.0%) | own: A 4.00 s (40.0%), B 2.00 s (20.0%)"));
   CHECK(contains(startupLine(window, sampleBuckets(), 1), "own: A 4.00 s (40.0%)"));
   CHECK(!contains(startupLine(window, sampleBuckets(), 1), "B 2.00"));
   CHECK(contains(startupLine(Window{}, sampleBuckets(), 3), "no samples"));

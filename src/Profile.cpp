@@ -286,7 +286,7 @@ std::string startupLine(Window const& window, Buckets const& buckets, size_t top
     mods += format("%s %s %.2f s (%.1f%%)", shown++ ? "," : "", name.c_str(), share.ownPercent / 100 * window.seconds,
                    share.ownPercent);
   }
-  line += format(", mods' own time %.2f s (%.1f%%) | own:%s", modsOwn / 100 * window.seconds, modsOwn,
+  line += format(", mods' and hooks' own time %.2f s (%.1f%%) | own:%s", modsOwn / 100 * window.seconds, modsOwn,
                  mods.empty() ? " none" : mods.c_str());
   return line;
 }

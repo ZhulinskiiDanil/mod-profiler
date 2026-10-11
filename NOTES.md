@@ -2,6 +2,33 @@
 
 Start: **Sun Oct 11 03:33:17 2026** (the first `date` of the run).
 
+## Links
+
+- Repository: https://github.com/ZhulinskiiDanil/mod-profiler
+- Latest release: https://github.com/ZhulinskiiDanil/mod-profiler/releases/latest (all releases: v0.1.0 to v0.8.0, pre-releases)
+- Zhulis Mods Manager: the entry in `mods.json`, https://github.com/ZhulinskiiDanil/zhulis-mods-manager/blob/main/mods.json
+  (commit c72bc67), and in its built-in list (commit 8711519). The manager shows pre-releases with
+  *Include pre-releases* on: its beta channel. Its cache had fetched the profiler's releases at 04:22.
+
+## What's done
+
+Stage 1 and the whole backlog, then more of my own:
+
+| | What | Where it's checked |
+| --- | --- | --- |
+| Stage 1 | The sampler: SuspendThread, GetThreadContext, the walk with its own `.pdata` copy and RtlVirtualUnwind, ResumeThread, nothing allocated, logged or locked in between. A lock-free ring. Mods' DLLs to buckets (game, cocos, other, each mod), inclusive and self. Diagnostics once a second | every game run below, the sampler test, three reviews |
+| Backlog 1 | The table in the game (`Ctrl+Shift+P`): own ms a frame, own %, inclusive %, the picked mod's hooks and functions | screenshots, clicks |
+| Backlog 2 | Names from PDBs with DbgHelp (own session handle, copies of build-folder PDBs, unloaded when unused) | names in the table, a rebuild while the game runs links |
+| Backlog 3 | Hook attribution: own time (pass-through detours excluded), the hooks a mod's time is under | DevTools 97% under swapBuffers, the cost test |
+| Backlog 4 | Slow frames with their culprit, function, hook, stacks; hangs and deadlocks reported while they last | self tests: 121 ms, 4.5 s, 4 s wait |
+| Backlog 5 | Export for speedscope.app (last 10 s, the game's start), zones as frames | JSON validated, 10 000 samples, every stack to the thread's start |
+| Backlog 6 | Improved Logger (soft): pinned numbers, a profile between markers | real keys, the summary in the log |
+| Backlog 7 | Baseline comparison, kept across restarts | real clicks, `baseline.json` |
+| Backlog 8 | The profiler's own cost, live and measured at 1, 2, 5 ms | README table |
+| Backlog 9 | Settings, about.md, README in Russian (the game's fonts have no Cyrillic) | |
+| Backlog 10 | Three code reviews by separate agents, 27 findings (none critical), all fixed or explained | |
+| Mine | The game's start (which mods make it load slowly), numbers by scene, the game loop's "between frames", hook dispatch as a row, zones for mod developers, exact frames through TulipHook's code, a session summary, the table's corner and size, a Windows test of the sampler itself | log lines, the sampler test |
+
 ## Decisions
 
 - **The stack is walked with the mod's own copy of the function tables, not `RtlLookupFunctionEntry`.**

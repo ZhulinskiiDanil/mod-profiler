@@ -192,6 +192,9 @@ namespace
     // Only compared, never used: it may be gone
     CCScene* m_scene = nullptr;
     uint64_t m_frames = 0;
+
+  public:
+    // The hooks' count when the list was sent at the game's load: no resend until it changes
     size_t m_hooks = 0;
   };
 } // namespace
@@ -230,10 +233,14 @@ $on_game(Loaded)
 {
   // Every mod is loaded by now, with its name
   profiler::setMods(loadedMods());
-  profiler::setHooks(loadedHooks());
+  auto hooks = loadedHooks();
+  auto hookCount = hooks.size();
+  profiler::setHooks(std::move(hooks));
   findLoop();
   profiler::hooksReady();
-  CCDirector::get()->getScheduler()->scheduleUpdateForTarget(new FrameCounter(), 0, false);
+  auto counter = new FrameCounter();
+  counter->m_hooks = hookCount;
+  CCDirector::get()->getScheduler()->scheduleUpdateForTarget(counter, 0, false);
 
   char value[32] = {};
   auto selfTest = GetEnvironmentVariableA("MOD_PROFILER_SELFTEST", value, sizeof(value)) ? std::string(value) : std::string();
