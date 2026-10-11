@@ -1,0 +1,57 @@
+{
+	"geode": "5.10.1",
+	"gd": {
+		"win": "2.2081"
+	},
+	"id": "zhulis.mod-profiler",
+	"name": "Mod Profiler",
+	"version": "v0.1.0",
+	"developer": "Zhulis",
+	"description": "A sampling profiler that shows how much of each frame every installed mod takes",
+	"repository": "https://github.com/ZhulinskiiDanil/mod-profiler",
+	"links": {
+		"source": "https://github.com/ZhulinskiiDanil/mod-profiler",
+		"community": "https://discord.gg/duuG4RqJKh"
+	},
+	"issues": {
+		"info": "Report bugs on GitHub or in the Discord server",
+		"url": "https://github.com/ZhulinskiiDanil/mod-profiler/issues"
+	},
+	"tags": [
+		"developer",
+		"performance",
+		"utility"
+	],
+	"settings": {
+		"enabled": {
+			"name": "Sampling",
+			"description": "Looks at the game's main thread about once a millisecond to see which mod's code it is in. Off: the profiler does nothing",
+			"type": "bool",
+			"default": true
+		},
+		"interval": {
+			"name": "Sample every (ms)",
+			"description": "Less is more precise and costs more. Every sample stops the main thread for some microseconds",
+			"type": "float",
+			"default": 1.0,
+			"min": 0.5,
+			"max": 10,
+			"control": {
+				"slider": true,
+				"slider-step": 0.5
+			}
+		},
+		"log-diagnostics": {
+			"name": "Diagnostics in the log",
+			"description": "Once a second, a line in the log: how many samples, how long the main thread was stopped for each, and the mods taking the most time",
+			"type": "bool",
+			"default": true
+		},
+		"log-stacks": {
+			"name": "Stacks in the log",
+			"description": "A few sampled stacks a second in the log, as module+offset. For checking the profiler itself",
+			"type": "bool",
+			"default": false
+		}
+	}
+}

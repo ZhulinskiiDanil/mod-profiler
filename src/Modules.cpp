@@ -1,0 +1,189 @@
+#include "Modules.hpp"
+
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <Windows.h>
+#include <Psapi.h>
+
+#include <algorithm>
+#include <cwctype>
+#include <string_view>
+
+namespace
+{
+  std::wstring lower(std::wstring text)
+  {
+    for (auto& c : text)
+      c = static_cast<wchar_t>(std::towlower(c));
+    return text;
+  }
+
+  std::wstring pathOf(HMODULE module)
+  {
+    std::wstring path(MAX_PATH, L'\0');
+    while (true)
+    {
+      auto length = GetModuleFileNameW(module, path.data(), static_cast<DWORD>(path.size()));
+      if (length == 0)
+        return {};
+      if (length < path.size())
+      {
+        path.resize(length);
+        return path;
+      }
+      path.resize(path.size() * 2);
+    }
+  }
+
+  std::string narrow(std::wstring const& text)
+  {
+    if (text.empty())
+      return {};
+    auto size = WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
+    std::string result(size, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), result.data(), size, nullptr, nullptr);
+    return result;
+  }
+
+  // A mod's binary is unpacked into geode\unzipped\<mod id>\: the folder names the mod even before
+  // Geode's list of mods is there
+  std::string modFromPath(std::wstring const& lowered)
+  {
+    static constexpr std::wstring_view marker = L"\\geode\\unzipped\\";
+    auto at = lowered.find(marker);
+    if (at == std::wstring::npos)
+      return {};
+    auto start = at + marker.size();
+    auto end = lowered.find(L'\\', start);
+    if (end == std::wstring::npos)
+      return {};
+    return narrow(lowered.substr(start, end - start));
+  }
+
+  // The mod's bucket, with its name from Geode once there is one
+  uint32_t named(Buckets& buckets, std::string const& id, std::string const& name)
+  {
+    auto index = buckets.index(id, name);
+    buckets.rename(index, name);
+    return index;
+  }
+
+  uint32_t bucketFor(std::wstring const& path, std::vector<modules::ModBinary> const& mods, Buckets& buckets)
+  {
+    auto lowered = lower(path);
+    auto file = lowered.substr(lowered.find_last_of(L"\\/") + 1);
+    if (file == L"geometrydash.exe")
+      return bucket::GAME;
+    if (file == L"libcocos2d.dll")
+      return bucket::COCOS;
+    if (file == L"geode.dll")
+      return buckets.index("geode.loader", "Geode");
+
+    for (auto const& mod : mods)
+      if (!mod.path.empty() && lower(mod.path.wstring()) == lowered)
+        return named(buckets, mod.id, mod.name);
+
+    auto id = modFromPath(lowered);
+    if (!id.empty())
+    {
+      for (auto const& mod : mods)
+        if (mod.id == id)
+          return named(buckets, mod.id, mod.name);
+      return buckets.index(id, id);
+    }
+    return bucket::OTHER;
+  }
+} // namespace
+
+std::vector<void*> modules::loaded()
+{
+  std::vector<HMODULE> handles(512);
+  DWORD needed = 0;
+  while (true)
+  {
+    auto bytes = static_cast<DWORD>(handles.size() * sizeof(HMODULE));
+    if (!EnumProcessModulesEx(GetCurrentProcess(), handles.data(), bytes, &needed, LIST_MODULES_ALL))
+      return {};
+    if (needed <= bytes)
+      break;
+    handles.resize(needed / sizeof(HMODULE) + 32);
+  }
+  std::vector<void*> result(handles.begin(), handles.begin() + needed / sizeof(HMODULE));
+  std::sort(result.begin(), result.end());
+  return result;
+}
+
+std::unique_ptr<ModuleMap> modules::build(std::vector<void*> const& handles, std::vector<ModBinary> const& mods, Buckets& buckets)
+{
+  std::vector<MappedModule> mapped;
+  std::vector<CodeRange> code;
+
+  for (auto handle : handles)
+  {
+    // Pinned: the module can't be unloaded until release(), so its tables stay readable
+    HMODULE pinned = nullptr;
+    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, static_cast<LPCWSTR>(handle), &pinned) || pinned != handle)
+    {
+      if (pinned)
+        FreeLibrary(pinned);
+      continue;
+    }
+
+    MODULEINFO info{};
+    if (!GetModuleInformation(GetCurrentProcess(), pinned, &info, sizeof(info)))
+    {
+      FreeLibrary(pinned);
+      continue;
+    }
+
+    auto base = reinterpret_cast<uintptr_t>(info.lpBaseOfDll);
+    auto dos = reinterpret_cast<IMAGE_DOS_HEADER const*>(base);
+    auto nt = reinterpret_cast<IMAGE_NT_HEADERS64 const*>(base + dos->e_lfanew);
+    if (dos->e_magic != IMAGE_DOS_SIGNATURE || nt->Signature != IMAGE_NT_SIGNATURE ||
+        nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC)
+    {
+      FreeLibrary(pinned);
+      continue;
+    }
+
+    auto path = pathOf(pinned);
+    MappedModule module{
+        .base = base,
+        .size = info.SizeOfImage,
+        .bucket = bucketFor(path, mods, buckets),
+        .name = narrow(path.substr(path.find_last_of(L"\\/") + 1)),
+        .handle = pinned,
+    };
+
+    auto const& exceptions = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION];
+    if (nt->OptionalHeader.NumberOfRvaAndSizes > IMAGE_DIRECTORY_ENTRY_EXCEPTION && exceptions.VirtualAddress &&
+        exceptions.VirtualAddress + static_cast<uint64_t>(exceptions.Size) <= info.SizeOfImage)
+    {
+      module.functions = reinterpret_cast<uint32_t const*>(base + exceptions.VirtualAddress);
+      module.functionCount = exceptions.Size / sizeof(RUNTIME_FUNCTION);
+    }
+
+    auto index = static_cast<uint32_t>(mapped.size());
+    auto section = IMAGE_FIRST_SECTION(nt);
+    for (int i = 0; i < nt->FileHeader.NumberOfSections; i++, section++)
+    {
+      if (!(section->Characteristics & IMAGE_SCN_MEM_EXECUTE))
+        continue;
+      auto begin = base + section->VirtualAddress;
+      auto size = std::max<uintptr_t>(section->Misc.VirtualSize, 1);
+      code.push_back({begin, std::min(begin + size, base + info.SizeOfImage), index});
+    }
+
+    mapped.push_back(std::move(module));
+  }
+
+  return std::make_unique<ModuleMap>(std::move(mapped), std::move(code));
+}
+
+void modules::release(ModuleMap const& map)
+{
+  for (auto const& module : map.modules())
+    if (module.handle)
+      FreeLibrary(static_cast<HMODULE>(module.handle));
+}
