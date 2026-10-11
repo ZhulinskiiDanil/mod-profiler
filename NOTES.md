@@ -5,7 +5,9 @@ Start: **Sun Oct 11 03:33:17 2026** (the first `date` of the run).
 ## Links
 
 - Repository: https://github.com/ZhulinskiiDanil/mod-profiler
-- Releases: https://github.com/ZhulinskiiDanil/mod-profiler/releases (pre-releases, so GitHub's "latest" link skips them)
+- Final release: https://github.com/ZhulinskiiDanil/mod-profiler/releases/tag/v0.8.1 (`zhulis.mod-profiler.geode`,
+  sha256 7a12a2e2...639c7a); all releases, v0.1.0 to v0.8.1: https://github.com/ZhulinskiiDanil/mod-profiler/releases
+  (pre-releases, so GitHub's "latest" link skips them)
 - Zhulis Mods Manager: the entry in `mods.json`, https://github.com/ZhulinskiiDanil/zhulis-mods-manager/blob/main/mods.json
   (commit c72bc67), and in its built-in list (commit 8711519). The manager shows pre-releases with
   *Include pre-releases* on: its beta channel. Its cache had fetched the profiler's releases at 04:22.
@@ -203,6 +205,12 @@ Stage 1 and the whole backlog, then more of my own:
   the mod's innermost frame (the outermost would pull a whole frame into the zone of a mod hooking it), PDBs
   kept while the table uses names, RBP trusted in hook code until its `ret`, a failed copy not loaded in
   place, the clean-up not following links or deleting a running game's copies, the test failing cleanly.
+- 09:14 v0.8.0 released. 09:55 the final 40 minute soak on it, table shown: 2466 lines, no gap, no crash.
+- 10:02 the regression suite on HEAD: hang 2.7 s, deadlock 2.5 s, minimized 0 reports, cost 0.507 ms, the
+  sampler test 489/489, 292/292, 295/295.
+- 10:32 the last hour: only the version, the changelog, the checks. 10:35 the stage 1 check on v0.8.1: 130 s
+  in the main menu, 131 diagnostics lines, no gap, 27.3 us a sample, no crash. 10:40 v0.8.1 released, the
+  final one, `.geode` attached by CI.
 - 08:40 zones are frames of their own in exported profiles: `[zone] self test cost` right above its
   function, 1267 ms of 10 s (0.53 ms a frame for 0.5 ms of work). The start's samples kept their zone too.
 
