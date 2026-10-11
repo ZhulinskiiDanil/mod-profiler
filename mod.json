@@ -48,6 +48,24 @@
 				"slider-step": 0.5
 			}
 		},
+		"spike-threshold": {
+			"name": "Slow frame (ms)",
+			"description": "A frame longer than this is looked into: whose time it was, in which function, with a few stacks. In the table and in the log",
+			"type": "float",
+			"default": 50,
+			"min": 20,
+			"max": 1000,
+			"control": {
+				"slider": true,
+				"slider-step": 10
+			}
+		},
+		"log-spikes": {
+			"name": "Slow frames in the log",
+			"description": "A line for every slow frame, with its culprit and one of its stacks",
+			"type": "bool",
+			"default": true
+		},
 		"symbols": {
 			"name": "Function names",
 			"description": "Names the functions in the table from the mods' PDB files (a mod built on this computer has one where it was built) and from export tables. Off: module+offset",

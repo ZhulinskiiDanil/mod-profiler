@@ -16,6 +16,8 @@ namespace
         .logDiagnostics = mod->getSettingValue<bool>("log-diagnostics"),
         .logStacks = mod->getSettingValue<bool>("log-stacks"),
         .symbols = mod->getSettingValue<bool>("symbols"),
+        .spikeMillis = mod->getSettingValue<double>("spike-threshold"),
+        .logSpikes = mod->getSettingValue<bool>("log-spikes"),
     };
   }
 
@@ -91,6 +93,23 @@ namespace
     profiler::setLoop(run, {mainLoop, pollEvents});
   }
 
+  // MOD_PROFILER_SELFTEST=1 at launch: one slow frame of this mod's own, 40 seconds after the game
+  // loaded, so a check can see the slow frames found and blamed on the right mod and function
+  void __declspec(noinline) selfTestSlowFrame()
+  {
+    auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(120);
+    volatile uint64_t spin = 0;
+    while (std::chrono::steady_clock::now() < until)
+      spin = spin + 1;
+    log::info("Self test: a 120 ms slow frame made");
+  }
+
+  class SelfTest : public CCObject
+  {
+  public:
+    void run(float) { selfTestSlowFrame(); }
+  };
+
   // Counts the frames as a plain scheduler callback: a hook on the frame would put this mod on
   // every stack under it, and its share would look like everything the frame does
   class FrameCounter : public CCObject
@@ -126,6 +145,10 @@ $on_game(Loaded)
   findLoop();
   profiler::hooksReady();
   CCDirector::get()->getScheduler()->scheduleUpdateForTarget(new FrameCounter(), 0, false);
+
+  char value[8] = {};
+  if (GetEnvironmentVariableA("MOD_PROFILER_SELFTEST", value, sizeof(value)) && value[0] == '1')
+    CCDirector::get()->getScheduler()->scheduleSelector(schedule_selector(SelfTest::run), new SelfTest(), 0, 0, 40, false);
 
   overlay::setup();
   overlay::setVisible(Mod::get()->getSavedValue<bool>("overlay-visible", false));

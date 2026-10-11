@@ -130,6 +130,8 @@ Share shareOf(Window const& window, uint32_t bucket);
 
 // "GeometryDash.exe+0x1a2b3c", or the bare address outside every module
 std::string describeAddress(uintptr_t address, ModuleMap const& map);
+// A function's name for a narrow column: no "module!" in front, no "`anonymous namespace'::"
+std::string shortName(std::string name);
 // The frames of a sample, innermost first, " < " between them
 std::string describeStack(Sample const& sample, ModuleMap const& map);
 

@@ -18,6 +18,9 @@ namespace profiler
     bool logDiagnostics = true;
     bool logStacks = false;
     bool symbols = true;
+    // Frames longer than this are slow frames, looked into
+    double spikeMillis = 50;
+    bool logSpikes = true;
   };
 
   // Call on the main thread
@@ -44,6 +47,24 @@ namespace profiler
   // How many seconds the recent window has
   inline constexpr int RECENT_SECONDS = 5;
 
+  // A slow frame, ready to show
+  struct SlowFrame
+  {
+    // The local time it was found at, "14:03:12"
+    std::string when;
+    double millis = 0;
+    // The mod, or empty when no mod had a fair share
+    std::string culprit;
+    double culpritPercent = 0;
+    double gamePercent = 0;
+    double idlePercent = 0;
+    // The culprit's busiest function and hook, and a few of its stacks, named
+    std::string function;
+    std::string hook;
+    std::vector<std::string> stacks;
+  };
+  inline constexpr size_t KEPT_SLOW_FRAMES = 20;
+
   struct Snapshot
   {
     // The last full second, the last few, and everything since the start
@@ -53,6 +74,8 @@ namespace profiler
     Buckets buckets;
     // Names for the busiest places of the recent window: hooked functions and mods' functions
     std::unordered_map<uintptr_t, std::string> names;
+    // The latest last
+    std::vector<SlowFrame> slowFrames;
   };
   Snapshot snapshot();
 } // namespace profiler

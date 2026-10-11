@@ -27,3 +27,6 @@ add_test(NAME unwind COMMAND unwind-tests)
 
 add_executable(attribution-tests AttributionTests.cpp ../src/Attribution.cpp ../src/ModuleMap.cpp ../src/Unwind.cpp)
 add_test(NAME attribution COMMAND attribution-tests)
+
+add_executable(spikes-tests SpikesTests.cpp ../src/Spikes.cpp)
+add_test(NAME spikes COMMAND spikes-tests)

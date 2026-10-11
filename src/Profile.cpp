@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <string_view>
 
 // ! --- Counting --- !
 
@@ -190,6 +191,17 @@ std::string describeAddress(uintptr_t address, ModuleMap const& map)
     std::snprintf(buffer, sizeof(buffer), "%s+0x%llx", module.name.c_str(), (unsigned long long)(address - module.base));
   }
   return buffer;
+}
+
+std::string shortName(std::string name)
+{
+  auto bang = name.find('!');
+  if (bang != std::string::npos)
+    name.erase(0, bang + 1);
+  static constexpr std::string_view anonymous = "`anonymous namespace'::";
+  for (auto at = name.find(anonymous); at != std::string::npos; at = name.find(anonymous))
+    name.erase(at, anonymous.size());
+  return name;
 }
 
 std::string describeStack(Sample const& sample, ModuleMap const& map)

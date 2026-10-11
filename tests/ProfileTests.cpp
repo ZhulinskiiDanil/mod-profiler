@@ -189,6 +189,16 @@ static void testDescribe()
   CHECK(describeStack(Sample{}, map) == "(empty)");
 }
 
+static void testShortName()
+{
+  CHECK(shortName("mod.dll!`anonymous namespace'::slow") == "slow");
+  CHECK(shortName("Hair::update") == "Hair::update");
+  CHECK(shortName("a.dll!ns::`anonymous namespace'::A::`anonymous namespace'::f") == "ns::A::f");
+  // A module+offset stays as it is
+  CHECK(shortName("mod.dll+0x10") == "mod.dll+0x10");
+  CHECK(shortName("") == "");
+}
+
 static void testStatsFromTicks()
 {
   Sample sample;
@@ -294,6 +304,7 @@ int main()
   testSharesWithoutFrames();
   testTopMods();
   testDescribe();
+  testShortName();
   testStatsFromTicks();
   testCost();
   testDiagnosticsLine();

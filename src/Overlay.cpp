@@ -11,6 +11,7 @@ namespace
 {
   constexpr int ROWS = 10;
   constexpr int DETAIL_LINES = 9;
+  constexpr int SLOW_LINES = 4;
   constexpr float WIDTH = 205;
   constexpr float LINE = 6.5f;
   constexpr float MARGIN = 4;
@@ -57,7 +58,7 @@ namespace
     {
       if (!CCNode::init())
         return false;
-      auto height = MARGIN * 2 + LINE * (3 + ROWS + 1 + DETAIL_LINES);
+      auto height = MARGIN * 2 + LINE * (3 + ROWS + 1 + DETAIL_LINES + 1 + SLOW_LINES);
       setContentSize({WIDTH, height});
       setAnchorPoint({0, 1});
       setID("mod-profiler-overlay"_spr);
@@ -101,6 +102,8 @@ namespace
 
       y -= LINE / 2;
       m_detail = label(this, MARGIN, y, {0, 1}, {210, 210, 220});
+      y -= LINE * (DETAIL_LINES + 0.5f);
+      m_slow = label(this, MARGIN, y, {0, 1}, {255, 170, 150});
 
       schedule(schedule_selector(Overlay::refresh), 0.5f);
       refresh(0);
@@ -161,6 +164,7 @@ namespace
         m_picked = m_shown.front();
 
       m_detail->setString(detail(snapshot).c_str());
+      m_slow->setString(slowFrames(snapshot).c_str());
     }
 
     void onRow(CCObject* sender)
@@ -193,6 +197,26 @@ namespace
       row.button->setEnabled(false);
     }
 
+    // The latest slow frames and whose they were
+    std::string slowFrames(profiler::Snapshot const& snapshot)
+    {
+      auto const& frames = snapshot.slowFrames;
+      if (frames.empty())
+        return "No slow frames";
+      std::string text = fmt::format("Slow frames: {}", frames.size());
+      auto shown = std::min<size_t>(frames.size(), SLOW_LINES - 1);
+      for (size_t i = frames.size() - shown; i < frames.size(); i++)
+      {
+        auto const& frame = frames[i];
+        auto who = frame.culprit.empty() ? fmt::format("the game {:.0f}%", frame.gamePercent)
+                                         : fmt::format("{} {:.0f}%", fit(frame.culprit, 22), frame.culpritPercent);
+        if (!frame.function.empty())
+          who += "  " + fit(shortName(frame.function), 40);
+        text += fmt::format("\n  {}  {:>5.0f} ms  {}", frame.when, frame.millis, who);
+      }
+      return text;
+    }
+
     // The picked mod's hooks and functions by their share of its own time
     std::string detail(profiler::Snapshot const& snapshot)
     {
@@ -221,7 +245,7 @@ namespace
         lines++;
         for (auto const& place : top)
         {
-          text += fmt::format("\n  {:>3.0f}%  {}", 100.0 * place.samples / own, fit(nameOf(place.address), 48));
+          text += fmt::format("\n  {:>3.0f}%  {}", 100.0 * place.samples / own, fit(shortName(nameOf(place.address)), 48));
           lines++;
         }
       };
@@ -233,6 +257,7 @@ namespace
     CCLabelBMFont* m_title = nullptr;
     CCLabelBMFont* m_summary = nullptr;
     CCLabelBMFont* m_detail = nullptr;
+    CCLabelBMFont* m_slow = nullptr;
     CCMenu* m_menu = nullptr;
     std::vector<Row> m_rows;
     // The mods in the rows, by ID, and the picked one

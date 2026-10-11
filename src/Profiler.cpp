@@ -2,12 +2,14 @@
 
 #include "Ring.hpp"
 #include "Sampler.hpp"
+#include "Spikes.hpp"
 #include "Symbols.hpp"
 
 #include <Geode/Geode.hpp>
 
 #include <atomic>
 #include <chrono>
+#include <ctime>
 #include <deque>
 #include <mutex>
 #include <thread>
@@ -23,6 +25,10 @@ namespace
   std::atomic<uint64_t> s_frames{0};
   std::atomic<bool> s_logDiagnostics{true};
   std::atomic<bool> s_logStacks{false};
+  std::atomic<double> s_spikeMillis{50};
+  std::atomic<bool> s_logSpikes{true};
+  // When each frame ended, from the main thread
+  Ring<int64_t> s_frameEnds(4096);
   // Geode's hooks are in place: generated code can be looked up from then on
   std::atomic<bool> s_hooksReady{false};
 
@@ -65,7 +71,99 @@ namespace
     uint64_t hooksVersion = 0;
     std::unordered_map<uintptr_t, std::string> hookNames;
     std::deque<Window> recent;
+    // The last seconds of samples, for cutting the slow frames out of
+    std::deque<Sample> held;
+    FrameClock clock;
+    std::deque<profiler::SlowFrame> slowFrames;
   };
+
+  // At most this many samples are held for the slow frames: a frame longer than that many
+  // milliseconds has only its end looked into
+  constexpr size_t HELD_SAMPLES = 6000;
+
+  // A function's name, or module+offset
+  std::string nameOf(Analyzer& analyzer, uintptr_t address)
+  {
+    if (auto hook = analyzer.hookNames.find(address); hook != analyzer.hookNames.end())
+      return hook->second;
+    auto index = analyzer.map->findImage(address);
+    auto name = index >= 0 ? symbols::name(address, analyzer.map->module(index)) : std::string();
+    if (name.empty())
+      return describeAddress(address, *analyzer.map);
+    // The module too, for the stacks: the name alone doesn't say whose it is
+    return analyzer.map->module(index).name + "!" + name;
+  }
+
+  std::string localTime()
+  {
+    auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::tm local{};
+    localtime_s(&local, &now);
+    char text[16];
+    std::strftime(text, sizeof(text), "%H:%M:%S", &local);
+    return text;
+  }
+
+  void findSlowFrames(Analyzer& analyzer)
+  {
+    auto ticksPerMilli = sampler::ticksPerSecond() / 1000.0;
+    auto threshold = static_cast<int64_t>(s_spikeMillis.load() * ticksPerMilli);
+    for (auto const& frame : analyzer.clock.slowFrames(threshold))
+    {
+      std::vector<Sample const*> samples;
+      std::vector<Verdict> verdicts;
+      for (auto const& sample : analyzer.held)
+        if (sample.time >= frame.start && sample.time < frame.end)
+        {
+          samples.push_back(&sample);
+          verdicts.push_back(attribute(sample, *analyzer.map, analyzer.attribution));
+        }
+      auto spike = makeSpike(frame, ticksPerMilli, samples, verdicts, 3);
+
+      profiler::SlowFrame slow{
+          .when = localTime(),
+          .millis = spike.millis,
+          .culpritPercent = spike.culpritPercent,
+          .gamePercent = spike.gamePercent,
+          .idlePercent = spike.idlePercent,
+      };
+      if (spike.culprit >= 0)
+        slow.culprit = analyzer.buckets[static_cast<uint32_t>(spike.culprit)].name;
+      if (!spike.functions.empty())
+        slow.function = nameOf(analyzer, spike.functions.front().address);
+      if (!spike.hooks.empty())
+        slow.hook = nameOf(analyzer, spike.hooks.front().address);
+      for (auto const& stack : spike.stacks)
+      {
+        std::string text;
+        for (int i = 0; i < stack.depth && i < MAX_FRAMES; i++)
+          text += (i ? " < " : "") + nameOf(analyzer, stack.frames[i]);
+        slow.stacks.push_back(std::move(text));
+      }
+
+      if (s_logSpikes.load(std::memory_order_relaxed))
+      {
+        auto who = slow.culprit.empty() ? std::string("no mod") : fmt::format("{} {:.0f}%", slow.culprit, slow.culpritPercent);
+        if (!slow.function.empty())
+          who += fmt::format(" in {}", slow.function);
+        if (!slow.hook.empty())
+          who += fmt::format(" under its hook of {}", slow.hook);
+        log::info("Slow frame: {:.0f} ms, {} samples: {}, the game {:.0f}%, waiting {:.0f}%", slow.millis, spike.samples, who,
+                  slow.gamePercent, slow.idlePercent);
+        if (!slow.stacks.empty())
+          log::info("Slow frame stack: {}", slow.stacks.front());
+      }
+
+      analyzer.slowFrames.push_back(std::move(slow));
+      while (analyzer.slowFrames.size() > profiler::KEPT_SLOW_FRAMES)
+        analyzer.slowFrames.pop_front();
+    }
+
+    // Samples before the frame in progress aren't needed anymore
+    auto oldest = analyzer.clock.oldestStart();
+    while (!analyzer.held.empty() && analyzer.held.front().time < oldest)
+      analyzer.held.pop_front();
+  }
 
   // The busiest places of every mod in a window, named: hooks by Geode, functions as module+offset
   std::unordered_map<uintptr_t, std::string> nameTopPlaces(Analyzer& analyzer, Window const& window)
@@ -200,6 +298,9 @@ namespace
       window.profile.add(*sample, *analyzer.map, &analyzer.attribution);
       collectUnknown(analyzer, *sample);
       window.stats.add(*sample, toMicros);
+      analyzer.held.push_back(*sample);
+      if (analyzer.held.size() > HELD_SAMPLES)
+        analyzer.held.pop_front();
       // A few stacks to look at, spread over the second
       if (s_logStacks.load(std::memory_order_relaxed) && window.stats.samples % 300 == 1)
         log::info("Stack: {}", describeStack(*sample, *analyzer.map));
@@ -229,8 +330,17 @@ namespace
       // Analyzing with the map the samples were taken with, then catching up with new modules
       Window window;
       refreshAttribution(analyzer);
+      // The frames first: their samples are in the ring by the time they end
+      while (auto end = s_frameEnds.peek())
+      {
+        analyzer.clock.add(*end);
+        s_frameEnds.pop();
+      }
       if (analyzer.map)
+      {
         analyze(analyzer, window);
+        findSlowFrames(analyzer);
+      }
       learnUnknown(analyzer);
       refreshMap(analyzer);
 
@@ -276,6 +386,7 @@ namespace
         s_snapshot.session = analyzer.session;
         s_snapshot.buckets = analyzer.buckets;
         s_snapshot.names = std::move(names);
+        s_snapshot.slowFrames.assign(analyzer.slowFrames.begin(), analyzer.slowFrames.end());
       }
 
       freeRetired(analyzer, !sampler::alive());
@@ -299,6 +410,8 @@ void profiler::setOptions(Options const& options)
 {
   s_logDiagnostics = options.logDiagnostics;
   s_logStacks = options.logStacks;
+  s_spikeMillis = options.spikeMillis;
+  s_logSpikes = options.logSpikes;
   symbols::setEnabled(options.symbols);
   sampler::setInterval(options.intervalMillis);
   if (options.enabled && !sampler::running())
@@ -329,7 +442,15 @@ void profiler::setLoop(uintptr_t loop, std::vector<uintptr_t> frame)
   s_hooksVersion++;
 }
 
-void profiler::frame() { s_frames.fetch_add(1, std::memory_order_relaxed); }
+void profiler::frame()
+{
+  s_frames.fetch_add(1, std::memory_order_relaxed);
+  if (auto slot = s_frameEnds.reserve())
+  {
+    *slot = sampler::now();
+    s_frameEnds.commit();
+  }
+}
 
 void profiler::hooksReady() { s_hooksReady = true; }
 
