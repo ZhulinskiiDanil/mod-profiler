@@ -15,6 +15,7 @@ namespace
         .intervalMillis = mod->getSettingValue<double>("interval"),
         .logDiagnostics = mod->getSettingValue<bool>("log-diagnostics"),
         .logStacks = mod->getSettingValue<bool>("log-stacks"),
+        .symbols = mod->getSettingValue<bool>("symbols"),
     };
   }
 

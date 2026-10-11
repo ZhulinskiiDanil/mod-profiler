@@ -83,6 +83,16 @@ namespace
     return frame == 0 ? sample.frames[0] : sample.frames[frame] - 1;
   }
 
+  // Called by a hook handler, but not one of the hooks' detours: the hook library's own bookkeeping
+  // (TulipHook is in Geode.dll), which is the cost of the hooks, not of the mod it's in
+  bool isHookPlumbing(Sample const& sample, ModuleMap const& map, Attribution const& attribution, int frame)
+  {
+    if (frame + 1 >= sample.depth || map.bucketOf(sample.frames[frame + 1]) != bucket::HOOKS)
+      return false;
+    auto start = map.functionStart(lookupAddress(sample, frame));
+    return start && !attribution.hooks.targetOf(start);
+  }
+
   bool passesOn(Sample const& sample, ModuleMap const& map, Attribution const& attribution, int frame, uint32_t owner)
   {
     // What the frame calls, past the hook handlers in between
@@ -141,6 +151,8 @@ Verdict attribute(Sample const& sample, ModuleMap const& map, Attribution const&
     auto owner = map.bucketOf(sample.frames[i]);
     if (owner < bucket::FIRST_MOD || passesOn(sample, map, attribution, i, owner))
       continue;
+    if (isHookPlumbing(sample, map, attribution, i))
+      break;
     verdict.owner = static_cast<int>(owner);
     auto start = map.functionStart(lookupAddress(sample, i));
     verdict.function = start ? start : sample.frames[i];

@@ -48,6 +48,12 @@
 				"slider-step": 0.5
 			}
 		},
+		"symbols": {
+			"name": "Function names",
+			"description": "Names the functions in the table from the mods' PDB files (a mod built on this computer has one where it was built) and from export tables. Off: module+offset",
+			"type": "bool",
+			"default": true
+		},
 		"log-diagnostics": {
 			"name": "Diagnostics in the log",
 			"description": "Once a second, a line in the log: how many samples, how long the main thread was stopped for each, and the mods taking the most time",

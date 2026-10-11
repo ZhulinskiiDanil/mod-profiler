@@ -17,6 +17,7 @@ namespace profiler
     double intervalMillis = 1.0;
     bool logDiagnostics = true;
     bool logStacks = false;
+    bool symbols = true;
   };
 
   // Call on the main thread

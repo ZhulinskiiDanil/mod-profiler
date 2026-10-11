@@ -229,6 +229,15 @@ static void testDetoursCountAsTheFunction()
   CHECK(result.owner == static_cast<int>(process.A));
 }
 
+static void testHookPlumbing()
+{
+  // A handler calling a function of A that isn't a detour (the hook library's index keeping): nobody's
+  Process process;
+  CHECK(verdict(process, stack({process.MA(0x250), process.H(0x10), process.G(0x250)})).owner == -1);
+  // A handler calling A's detour: A's
+  CHECK(verdict(process, stack({process.MA(0x150), process.H(0x10), process.G(0x250)})).owner == static_cast<int>(process.A));
+}
+
 static void testEmpty()
 {
   Process process;
@@ -251,6 +260,7 @@ int main()
   testThreadInTheMod();
   testPatchedCall();
   testIdle();
+  testHookPlumbing();
   testBetweenFrames();
   testDetoursCountAsTheFunction();
   testEmpty();

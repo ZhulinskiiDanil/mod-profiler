@@ -2,6 +2,7 @@
 
 #include "Ring.hpp"
 #include "Sampler.hpp"
+#include "Symbols.hpp"
 
 #include <Geode/Geode.hpp>
 
@@ -82,8 +83,13 @@ namespace
         names[place.address] = name != analyzer.hookNames.end() ? name->second : describeAddress(place.address, *analyzer.map);
       }
       for (auto const& place : topPlaces(window.profile.functions(), bucket, PER_MOD))
-        if (!names.contains(place.address))
-          names[place.address] = describeAddress(place.address, *analyzer.map);
+      {
+        if (names.contains(place.address))
+          continue;
+        auto index = analyzer.map->findImage(place.address);
+        auto name = index >= 0 ? symbols::name(place.address, analyzer.map->module(index)) : std::string();
+        names[place.address] = name.empty() ? describeAddress(place.address, *analyzer.map) : name;
+      }
     }
     return names;
   }
@@ -284,6 +290,7 @@ void profiler::setOptions(Options const& options)
 {
   s_logDiagnostics = options.logDiagnostics;
   s_logStacks = options.logStacks;
+  symbols::setEnabled(options.symbols);
   sampler::setInterval(options.intervalMillis);
   if (options.enabled && !sampler::running())
     sampler::start(s_ring, s_map, options.intervalMillis);
