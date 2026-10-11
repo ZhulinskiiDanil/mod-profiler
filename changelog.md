@@ -1,3 +1,9 @@
+# v0.7.0
+
+- A mod can be rebuilt while the game runs: the profiler read its PDB and kept it open, so linking failed. A PDB from a build folder is read from a copy now
+- Exact frames through hook handlers whose code after a call looks like an epilog
+- The analyzer caches where functions start
+
 # v0.6.0
 
 - Zones: `mod_profiler::Zone zone("hair simulation")` (include/ModProfiler.hpp) in a mod's code, and the table shows the zone's ms a frame under the mod. A soft dependency, a pointer check when Mod Profiler isn't there

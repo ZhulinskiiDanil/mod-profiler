@@ -5,7 +5,7 @@
 	},
 	"id": "zhulis.mod-profiler",
 	"name": "Mod Profiler",
-	"version": "v0.6.0",
+	"version": "v0.7.0",
 	"developer": "Zhulis",
 	"early-load": true,
 	"load-priority": -2900,
