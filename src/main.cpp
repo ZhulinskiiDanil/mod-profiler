@@ -127,12 +127,22 @@ namespace
     log::info("Self test: a 4 s wait made");
   }
 
+  // Exactly this long every frame: the table's own ms for this mod has to say about the same
+  void __declspec(noinline) selfTestCost()
+  {
+    auto until = std::chrono::steady_clock::now() + std::chrono::microseconds(500);
+    volatile uint64_t spin = 0;
+    while (std::chrono::steady_clock::now() < until)
+      spin = spin + 1;
+  }
+
   class SelfTest : public CCObject
   {
   public:
     void run(float) { selfTestSlowFrame(); }
     void hang(float) { selfTestHang(); }
     void deadlock(float) { selfTestDeadlock(); }
+    void cost(float) { selfTestCost(); }
     void play(float)
     {
       auto level = GameLevelManager::get()->getMainLevel(1, false);
@@ -205,6 +215,9 @@ $on_game(Loaded)
   auto selfTest = GetEnvironmentVariableA("MOD_PROFILER_SELFTEST", value, sizeof(value)) ? std::string(value) : std::string();
   if (selfTest == "hang")
     CCDirector::get()->getScheduler()->scheduleSelector(schedule_selector(SelfTest::hang), new SelfTest(), 0, 0, 30, false);
+  // Every frame, from 20 seconds in
+  if (selfTest == "cost")
+    CCDirector::get()->getScheduler()->scheduleSelector(schedule_selector(SelfTest::cost), new SelfTest(), 0, kCCRepeatForever, 20, false);
   if (selfTest == "deadlock")
     CCDirector::get()->getScheduler()->scheduleSelector(schedule_selector(SelfTest::deadlock), new SelfTest(), 0, 0, 30, false);
   if (selfTest == "1" || selfTest == "play")

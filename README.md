@@ -54,6 +54,16 @@ Slow frame: 121 ms, 121 samples: Mod Profiler 99% in zhulis.mod-profiler.dll!sel
 Slow frame stack: ntdll.dll!RtlQueryPerformanceCounter+0x6d < ... < zhulis.mod-profiler.dll!selfTestSlowFrame+0x52 < libcocos2d.dll!cocos2d::CCTimer::update+0xcc < ...
 ```
 
+## How exact it is
+
+Checked with known costs (`MOD_PROFILER_SELFTEST`, see Build):
+
+- 0.500 ms of work every frame in the profiler's own code: the table said **0.514 ms a frame** on average over 30 seconds (0.49 to 0.57 a second), at 240 fps
+- a 120 ms frame of its own: found, **98-99%** blamed on the right function
+- a 4.5 s frame: reported as a hang after 2.7 s, 100% in the right function. A 4 s wait on an event: reported as a possible deadlock after 2.5 s
+
+At 1000 samples a second, a share is about ±0.3% of the time for a second's numbers, less over the table's 5 seconds or a session.
+
 ## What it costs
 
 Measured in the main menu with 60 mods installed, 80 seconds each (the log line has these numbers live):
@@ -91,4 +101,4 @@ cmake -S tests -B build-tests && cmake --build build-tests && ctest --test-dir b
 
 Needs the Geode SDK (`GEODE_SDK`) and its CLI. How the parts fit together, and why some are the way they are: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-`MOD_PROFILER_SELFTEST=1` in the game's environment makes one 120 ms frame of the profiler's own 40 seconds after the start, and saves a profile 5 seconds later: a check that slow frames are found and blamed right.
+`MOD_PROFILER_SELFTEST` in the game's environment checks the profiler end to end: `1` makes one 120 ms frame of its own 40 seconds in and saves a profile 5 seconds later, `play` also opens the first main level, `hang` makes a 4.5 s frame, `deadlock` waits 4 s on an event, `cost` spends 0.5 ms of every frame from 20 seconds in.
